@@ -6,8 +6,6 @@ knitr::opts_chunk$set(
 
 ## ----setup--------------------------------------------------------------------
 library(aghq)
-library(dplyr)
-library(ggplot2)
 
 ## ----aghq1,warning = FALSE,message = FALSE------------------------------------
 # Stable version:
@@ -71,15 +69,18 @@ pdfwithlambda <- compute_pdf_and_cdf(
   )
 )
 # Plot along with the true posterior
-lambdapostplot <- pdfwithlambda %>%
-  ggplot(aes(x = transparam,y = pdf_transparam)) +
-  theme_classic() +
-  geom_line() +
-  stat_function(fun = dgamma,
-                args = list(shape = 1+sum(y),rate = 1 + length(y)),
-                linetype = 'dashed') +
-  labs(x = expression(lambda),y = "Density")
-lambdapostplot
+# lambdapostplot <- pdfwithlambda %>%
+#   ggplot(aes(x = transparam,y = pdf_transparam)) +
+#   theme_classic() +
+#   geom_line() +
+#   stat_function(fun = dgamma,
+#                 args = list(shape = 1+sum(y),rate = 1 + length(y)),
+#                 linetype = 'dashed') +
+#   labs(x = expression(lambda),y = "Density")
+
+with(pdfwithlambda,plot(transparam,pdf_transparam,type='l',xlab = expression(lambda),ylab = "Density"))
+with(pdfwithlambda,lines(transparam,dgamma(transparam,shape = 1+sum(y),rate = 1+length(y)),lty='dashed'))
+
 
 ## ----postmean1----------------------------------------------------------------
 options(digits = 6)
@@ -106,4 +107,9 @@ etaquants <- compute_quantiles(
 exp(etaquants)
 # and compared with the truth:
 qgamma(c(.01,.25,.50,.75,.99),shape = 1+sum(y),rate = 1+length(y))
+# Can be used to get approximate posterior samples:
+M <- 1e04 # 10,000 samples
+samps <- compute_quantiles(thequadrature$marginals[[1]],runif(M))
+hist(exp(samps),breaks = 50,freq=FALSE)
+with(pdfwithlambda,lines(transparam,dgamma(transparam,shape = 1+sum(y),rate = 1+length(y)),lty='dashed'))
 

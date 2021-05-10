@@ -86,17 +86,27 @@
 #' @export
 #'
 aghq <- function(ff,k,startingvalue,optresults = NULL,control = default_control(),...) {
+  # Negate it if asked
+  if (control$negate) {
+    ffa <- list(
+      fn = function(theta) -1 * ff$fn(theta),
+      gr = function(theta) -1 * ff$gr(theta),
+      he = function(theta) -1 * ff$he(theta)
+    )
+  } else {
+    ffa <- ff
+  }
 
   # Optimization
-  if (is.null(optresults)) utils::capture.output(optresults <- optimize_theta(ff,startingvalue,control,...))
+  if (is.null(optresults)) utils::capture.output(optresults <- optimize_theta(ffa,startingvalue,control,...))
 
   # Normalization
-  normalized_posterior <- normalize_logpost(optresults,k,...)
+  normalized_posterior <- normalize_logpost(optresults,k,ndConstruction = control$ndConstruction,...)
 
   # Marginals
   d <- length(startingvalue)
   marginals <- vector(mode = "list",length = d)
-  for (j in 1:d) marginals[[j]] <- marginal_posterior(optresults,k,j)
+  for (j in 1:d) marginals[[j]] <- marginal_posterior(optresults,k,j,control$ndConstruction)
 
   out <- list(
     normalized_posterior = normalized_posterior,
@@ -683,24 +693,158 @@ print.laplacesummary <- function(x,...) {
 #'
 #' @family quadrature
 #'
+#' @examples
+#' logfteta2d <- function(eta,y) {
+#'   # eta is now (eta1,eta2)
+#'   # y is now (y1,y2)
+#'   n <- length(y)
+#'   n1 <- ceiling(n/2)
+#'   n2 <- floor(n/2)
+#'   y1 <- y[1:n1]
+#'   y2 <- y[(n1+1):(n1+n2)]
+#'   eta1 <- eta[1]
+#'   eta2 <- eta[2]
+#'   sum(y1) * eta1 - (length(y1) + 1) * exp(eta1) - sum(lgamma(y1+1)) + eta1 +
+#'     sum(y2) * eta2 - (length(y2) + 1) * exp(eta2) - sum(lgamma(y2+1)) + eta2
+#' }
+#' set.seed(84343124)
+#' n1 <- 5
+#' n2 <- 5
+#' n <- n1+n2
+#' y1 <- rpois(n1,5)
+#' y2 <- rpois(n2,5)
+#
+#' objfunc2d <- function(x) logfteta2d(x,c(y1,y2))
+#' objfunc2dmarg <- function(W,theta) objfunc2d(c(W,theta))
+#' objfunc2dmarggr <- function(W,theta) {
+#'   fn <- function(W) objfunc2dmarg(W,theta)
+#'   numDeriv::grad(fn,W)
+#' }
+#' objfunc2dmarghe <- function(W,theta) {
+#'   fn <- function(W) objfunc2dmarg(W,theta)
+#'   numDeriv::hessian(fn,W)
+#' }
+#'
+#' funlist2dmarg <- list(
+#'   fn = objfunc2dmarg,
+#'   gr = objfunc2dmarggr,
+#'   he = objfunc2dmarghe
+#' )
+#
+# themarginallaplace <- aghq::marginal_laplace(funlist2dmarg,3,list(W = 0,theta = 0))
 #' @export
 #'
 marginal_laplace <- function(ff,k,startingvalue,optresults = NULL,control = default_control_marglaplace(),...) {
 
+  # Negate it if asked
+  if (control$negate) {
+    ffa <- list(
+      fn = function(theta) -1 * ff$fn(theta),
+      gr = function(theta) -1 * ff$gr(theta),
+      he = function(theta) -1 * ff$he(theta)
+    )
+  } else {
+    ffa <- ff
+  }
   # Dimension of W space
   Wd <- length(startingvalue$W)
+
+  # Mechanism for saving and reusing starting values
+  # and hessians/modes/chols
+  thetatable <- t(as.data.frame(startingvalue$theta))
+  colnames(thetatable) <- paste0('theta',1:length(startingvalue$theta))
+  rownames(thetatable) <- NULL
+
+  Wlist <- list()
+  Wlist[[1]] <- startingvalue$W
+
+  Hlist <- list()
+  Hlist[[1]] <- -1 * ffa$he(W = startingvalue$W,theta = startingvalue$theta)
+
+  envtouse <- environment()
+
+  get_thetaidx <- function(theta,whichenv = parent.frame()) {
+    # Return the closest theta in the thetatable
+    thetatable <- whichenv$thetatable
+    if (is.null(thetatable)) return(0)
+    if (nrow(thetatable) == 0) return(0)
+
+    which.min(apply(thetatable,1,function(x) sum(abs(x - theta))))
+  }
+
+  theta_in_table <- function(theta,whichenv = parent.frame()) {
+    # logical: is theta in the thetatable?
+    thetatable <- whichenv$thetatable
+    any(apply(thetatable,1,function(x) all(x == theta)))
+  }
+
+  get_Wstart <- function(theta,whichenv = parent.frame()) {
+    whichenv$Wlist[[get_thetaidx(theta,whichenv)]]
+  }
+
+  get_H <- function(theta,whichenv = parent.frame()) {
+    whichenv$Hlist[[get_thetaidx(theta,whichenv)]]
+  }
+
+  add_elements <- function(theta,W,H,whichenv = parent.frame()) {
+    # Check if that theta already exists, if so, overwrite
+    if (theta_in_table(theta,whichenv)) {
+      Wlist <- whichenv$Wlist
+      Wlist[[get_thetaidx(theta,whichenv)]] <- W
+      assign("Wlist",Wlist,envir = whichenv)
+
+      Hlist <- whichenv$Hlist
+      Hlist[[get_thetaidx(theta,whichenv)]] <- H
+      assign("Hlist",Hlist,envir = whichenv)
+    } else {
+      newrow <- t(as.data.frame(theta))
+      colnames(newrow) <- paste0('theta',1:length(theta))
+      rownames(newrow) <- NULL
+
+      thetatable <- rbind(
+        whichenv$thetatable,
+        newrow
+      )
+      assign("thetatable",thetatable,envir = whichenv)
+
+      Wlist <- whichenv$Wlist
+      ll <- length(Wlist)
+      Wlist[[ll+1]] <- W
+      assign("Wlist",Wlist,envir = whichenv)
+
+      Hlist <- whichenv$Hlist
+      ll <- length(Hlist)
+      Hlist[[ll+1]] <- H
+      assign("Hlist",Hlist,envir = whichenv)
+    }
+  }
+
   # Write a function for fixed theta that computes the laplace approximation
-  log_posterior_theta <- function(theta) {
+  log_posterior_theta <- function(theta,whichenv = envtouse) {
     # cat('theta = ',theta,'\n')
     ffinner <- list(
-      fn = function(W) ff$fn(W,theta),
-      gr = function(W) ff$gr(W,theta),
-      he = function(W) ff$he(W,theta)
+      fn = function(W) ffa$fn(W,theta),
+      gr = function(W) ffa$gr(W,theta),
+      he = function(W) ffa$he(W,theta)
     )
 
-    utils::capture.output(lap <- laplace_approximation(ffinner,startingvalue$W,control = list(method = control$inner_method)))
+    # If theta is in the table already then create the optresults
+    Wstart <- get_Wstart(theta,whichenv = whichenv)
+    optresults <- NULL
+    # if (theta_in_table(theta,whichenv)) {
+    #   H <- get_H(theta,whichenv)
+    #   optresults <- list(
+    #     ff = ffinner,
+    #     mode = Wstart,
+    #     hessian = H,
+    #     convergence = 0
+    #   )
+    # }
 
-    # cat('normconst = ',as.numeric(lap$lognormconst),'\n')
+    utils::capture.output(lap <- laplace_approximation(ffinner,Wstart,optresults = optresults,control = list(method = control$inner_method)))
+
+    add_elements(theta,lap$optresults$mode,lap$optresults$hessian,whichenv = whichenv)
+
     as.numeric(lap$lognormconst)
   }
 
@@ -714,11 +858,8 @@ marginal_laplace <- function(ff,k,startingvalue,optresults = NULL,control = defa
   )
   # If requesting an "outer" Laplace approximation, return it
   if (k == 1) return(aghq::laplace_approximation(ffouter,startingvalue$theta,control = control))
-  # aghq::aghq(ffouter,k,startingvalue$theta,control = control)
   # Do the quadrature manually, so we can save intermediate results
   utils::capture.output(outeropt <- aghq::optimize_theta(ffouter,startingvalue$theta,control,...))
-  # > eigen(outeropt$hessian)$values
-  # [1] 716.35141 231.83598  86.38313 -53.23640
 
   # Create the grid
   S <- length(outeropt$mode) # Dimension
@@ -740,26 +881,27 @@ marginal_laplace <- function(ff,k,startingvalue,optresults = NULL,control = defa
     distinctthetas <- nodesandweights[ ,thetaorder]
   }
   lp <- numeric(nrow(distinctthetas))
-  modesandhessians <- dplyr::as_tibble(distinctthetas) %>%
-    tibble::add_column(
-      mode = vector(mode = 'list',length = nrow(distinctthetas)),
-      H = vector(mode = 'list',length = nrow(distinctthetas)),
-      logpost = numeric(nrow(distinctthetas))
-    )
+  # modesandhessians <- dplyr::as_tibble(distinctthetas) %>%
+  #   tibble::add_column(
+  #     mode = vector(mode = 'list',length = nrow(distinctthetas)),
+  #     H = vector(mode = 'list',length = nrow(distinctthetas)),
+  #     logpost = numeric(nrow(distinctthetas))
+  #   )
+
+  modesandhessians <- distinctthetas
+  modesandhessians$mode <- vector(mode = 'list',length = nrow(distinctthetas))
+  modesandhessians$H <- vector(mode = 'list',length = nrow(distinctthetas))
+  modesandhessians$logpost <- numeric(nrow(distinctthetas))
 
   for (i in 1:length(lp)) {
     theta <- as.numeric(distinctthetas[i,thetaorder])
     # Re-use the starting values
-    if (i == 1) {
-      Wstart <- startingvalue$W
-    } else {
-      Wstart <- modesandhessians[i-1,'mode'][[1]][[1]]
-    }
+    Wstart <- get_Wstart(theta,envtouse)
     # Do the Laplace approx
     ffinner <- list(
-      fn = function(W) ff$fn(W,theta),
-      gr = function(W) ff$gr(W,theta),
-      he = function(W) ff$he(W,theta)
+      fn = function(W) ffa$fn(W,theta),
+      gr = function(W) ffa$gr(W,theta),
+      he = function(W) ffa$he(W,theta)
     )
 
     utils::capture.output(lap <- laplace_approximation(ffinner,Wstart,control = list(method = control$inner_method)))
@@ -773,7 +915,8 @@ marginal_laplace <- function(ff,k,startingvalue,optresults = NULL,control = defa
   # Get the normalization constant
   ww <- nodesandweights$weights
 
-  lognormconst <- matrixStats::logSumExp(log(ww) + lp)
+  lognormconst <- logsumexp(log(ww) + lp)
+
   nodesandweights$logpost <- lp
   nodesandweights$logpost_normalized <- lp - lognormconst
 
@@ -797,5 +940,95 @@ marginal_laplace <- function(ff,k,startingvalue,optresults = NULL,control = defa
   out
 }
 
+#' AGHQ-normalized marginal Laplace approximation from a TMB function template
+#'
+#' Implement the algorithm from \code{aghq::marginal_laplace()}, but making use of
+#' \code{TMB}'s automatic Laplace approximation. This function takes a function
+#' list from \code{TMB::MakeADFun()} with a non-empty set of \code{random} parameters,
+#' in which the \code{fn} and \code{gr} are the unnormalized marginal Laplace
+#' approximation and its gradient. It then calls \code{aghq::aghq()} and formats
+#' the resulting object so that its contents and class match the output of
+#' \code{aghq::marginal_laplace()} and are hence suitable for post-processing
+#' with \code{summary}, \code{aghq::sample_marginal()}, and so on.
+#'
+#' @details Because \code{TMB} does not yet have the Hessian of the log marginal Laplace
+#' approximation implemented, a numerically-differentiated jacobian of the gradient
+#' is used via \code{numDeriv::jacobian()}. You can turn this off (using \code{ff$he()} instead,
+#' which you'll have to modify yourself) using \code{default_control_tmb(numhessian = FALSE)}.
+#'
+#' @param ff The output of calling \code{TMB::MakeADFun()} with \code{random} set
+#' to a non-empty subset of the parameters. **VERY IMPORTANT**: \code{TMB}'s
+#' automatic Laplace approximation requires you to write your template implementing
+#' the **negated** log-posterior. Therefore, this list that you input here
+#' will contain components \code{fn}, \code{gr} and \code{he} that implement the
+#' **negated** log-posterior and its derivatives. This is **opposite**
+#' to every other comparable function in the \code{aghq} package, and is done
+#' here to emphasize compatibility with \code{TMB}.
+#' @param control A list of control parameters. See \code{?default_control} for details. Valid options are:
+#' \itemize{
+#' \item{\code{method}: }{optimization method to use for the \code{theta} optimization:
+#' \itemize{
+#' \item{'sparse_trust' (default): }{\code{trustOptim::trust.optim}}
+#' \item{'sparse': }{\code{trust::trust}}
+#' \item{'BFGS': }{\code{optim(...,method = "BFGS")}}
+#' }
+#' }
+#' \item{\code{inner_method}: }{optimization method to use for the \code{W} optimization; same
+#' options as for \code{method}. Default \code{inner_method} is 'sparse_trust' and default \code{method} is 'BFGS'.
+#' }
+#' \item \code{negate}: default \code{TRUE}. See \code{?default_control_tmb}. Assumes that your \code{TMB} function
+#' template computes the **negated** log-posterior, which it must if you're using \code{TMB}'s automatic
+#' Laplace approximation, which you must be if you're using this function!}.
+#'
+#' @inheritParams aghq
+#'
+#' @return If \code{k > 1}, an object of class \code{marginallaplace}
+#' (and inheriting from class \code{aghq}) of the same
+#' structure as that returned by \code{aghq::marginal_laplace()}, with \code{plot}
+#' and \code{summary} methods, and suitable for input into \code{aghq::sample_marginal()}
+#' for drawing posterior samples.
+#'
+#' @family quadrature
+#'
+#' @export
+#'
+marginal_laplace_tmb <- function(ff,k,startingvalue,optresults = NULL,control = default_control_tmb(),...) {
+  # Hessian
+  if (control$numhessian) {
+    ff$he <- function(theta) numDeriv::jacobian(ff$gr,theta,method = 'simple')
+  }
+  ## Do aghq ##
+  # The aghq
+  quad <- aghq(ff,k,startingvalue,optresults,control,...)
+
+  ## Add on the info needed for marginal Laplace ##
+  # Add on the quad point modes and curvatures
+  distinctthetas <- quad$normalized_posterior$nodesandweights[ ,grep('theta',colnames(quad$normalized_posterior$nodesandweights))]
+  if (!is.data.frame(distinctthetas)) distinctthetas <- data.frame(theta1 = distinctthetas)
+
+  modesandhessians <- distinctthetas
+  modesandhessians$mode <- vector(mode = 'list',length = nrow(distinctthetas))
+  modesandhessians$H <- vector(mode = 'list',length = nrow(distinctthetas))
+
+  thetanames <- colnames(distinctthetas)
 
 
+    for (i in 1:nrow(distinctthetas)) {
+      # Get the theta
+      theta <- as.numeric(modesandhessians[i,thetanames])
+      # Set up the mode and hessian of the random effects. This happens when you run
+      # the TMB objective with a particular theta
+      ff$fn(theta)
+      # Now pull the mode and hessian. Have to be careful about scoping
+      mm <- ff$env$last.par
+      modesandhessians[i,'mode'] <- list(list(mm[ff$env$random]))
+      H <- ff$env$spHess(mm,random = TRUE)
+      H <- rlang::duplicate(H) # Somehow, TMB puts all evals of spHess in the same memory location.
+      modesandhessians[i,'H'] <- list(list(H))
+    }
+
+  quad$modesandhessians <- modesandhessians
+
+  class(quad) <- c("marginallaplace","aghq")
+  quad
+}
