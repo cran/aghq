@@ -22,10 +22,10 @@ Valid options are:
 \itemize{
 \item{\code{method}: }{optimization method to use:
 \itemize{
-\item{'sparse_trust' (default): }{\code{trustOptim::trust.optim} with \code{method = 'sparse'}}
-\item{'SR1' (default): }{\code{trustOptim::trust.optim} with \code{method = 'SR1'}}
-\item{'trust': }{\code{trust::trust}}
-\item{'BFGS': }{\code{optim(...,method = "BFGS")}}
+\item{'BFGS' (default): }{\code{optim(...,method = "BFGS")}}
+\item{'sparse_trust': }{\code{trustOptim::trust.optim}}
+\item{'SR1': }{\code{trustOptim::trust.optim} with \code{method = 'SR1'}}
+\item{'sparse': }{\code{trust::trust}}
 }
 Default is 'sparse_trust'.
 }
@@ -40,6 +40,18 @@ have provided a template which computes the \strong{negated} log-posterior and i
 derivatives.
 \item \code{ndConstruction}: construct a multivariate quadrature rule using a \code{"product"}
 rule or a \code{"sparse"} grid? Default \code{"product"}. See \code{?mvQuad::createNIGrid()}.
+\item \code{interpolation}: how to interpolate the marginal posteriors. The \code{'auto'} option
+(default) chooses for you and should always work well. The \code{'polynomial'}
+option uses \code{polynom::poly.calc()} to construct a global polynomial interpolant
+and has been observed to be unstable as the number of quadrature points gets larger, which
+is obviously a bad thing. Try \code{'spline'} instead, which uses a cubic B-Spline
+interpolant from \code{splines::interpSpline()}.
+\item{numhessian}: logical, default \code{FALSE}. Replace the \code{ff$he} with a numerically-differentiated
+version, by calling \code{numDeriv::jacobian} on \code{ff$gr}. Used mainly for \code{TMB} with the automatic
+Laplace approximation, which does not have an automatic Hessian.
+\item{onlynormconst}: logical, default \code{FALSE}. Skip everything after the calculation of the log integral,
+and just return the numeric value of the log integral. Saves computation time, and most useful in cases
+where \code{aghq} is being used as a step in a more complicated procedure.
 }
 }
 \examples{

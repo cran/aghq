@@ -70,6 +70,7 @@ str(ss)
 \seealso{
 Other quadrature: 
 \code{\link{aghq}()},
+\code{\link{get_log_normconst}()},
 \code{\link{laplace_approximation}()},
 \code{\link{marginal_laplace_tmb}()},
 \code{\link{marginal_laplace}()},
@@ -80,6 +81,8 @@ Other quadrature:
 \code{\link{print.aghq}()},
 \code{\link{print.laplacesummary}()},
 \code{\link{print.laplace}()},
-\code{\link{summary.laplace}()}
+\code{\link{print.marginallaplacesummary}()},
+\code{\link{summary.laplace}()},
+\code{\link{summary.marginallaplace}()}
 }
 \concept{quadrature}

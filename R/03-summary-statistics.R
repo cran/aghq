@@ -58,8 +58,16 @@
 #'
 #' @export
 #'
-marginal_posterior <- function(optresults,k,j,ndConstruction = 'product') {
-  normresults <- normalize_logpost(optresults,k,whichfirst = j,ndConstruction)
+marginal_posterior <- function(optresults,k,j,basegrid = NULL,ndConstruction = 'product') {
+
+  # If using sparse grids, marginals are currently not supported
+  dummyout <- data.frame(theta1 = 0,logmargpost = 0,w = 0)
+  if (!is.null(basegrid)) {
+    if (basegrid$ndConstruction != 'product') return(dummyout)
+  }
+  if (ndConstruction != 'product') return(dummyout)
+
+  normresults <- normalize_logpost(optresults,k,whichfirst = j,basegrid=basegrid,ndConstruction = ndConstruction)
   nodesandweights <- normresults$nodesandweights
   thetagridfull <- normresults$grid
   lognormconstorig <- normresults$lognormconst
@@ -118,6 +126,12 @@ marginal_posterior <- function(optresults,k,j,ndConstruction = 'product') {
 #' and for computing quantiles.
 #'
 #' @param margpost The output of \code{aghq::marginal_posterior}. See the documentation for that function.
+#' @param method The method to use. Default is a \code{k} point polynomial interpolant using \code{polynom::poly.calc()}.
+#' This has been observed to result in unstable behaviour for larger numbers of quadrature points \code{k},
+#' which is of course undesirable. If \code{k > 3}, you can set \code{method = 'spline'} to use \code{splines::interpSpline()} instead,
+#' which uses cubic B-Splines. These should always be better than a straight polynomial, except don't work
+#' when \code{k < 4} which is why they aren't the default. If you try and set \code{method = 'spline'} with
+#' \code{k < 4} it will be changed back to polynomial, with a warning.
 #'
 #' @return A function of \code{theta} which computes the log interpolated normalized marginal posterior.
 #'
@@ -125,11 +139,45 @@ marginal_posterior <- function(optresults,k,j,ndConstruction = 'product') {
 #'
 #' @export
 #'
-interpolate_marginal_posterior <- function(margpost) {
+interpolate_marginal_posterior <- function(margpost,method = c('auto','polynomial','spline')) {
   # Unname the theta
   colnames(margpost)[grep("theta",colnames(margpost))] <- "theta"
 
-  as.function(polynom::poly.calc(x = margpost$theta,y = margpost$logmargpost))
+  goodmethods <- c('auto','polynomial','spline')
+  method <- method[1]
+  if (!is.character(method)) {
+    stop(paste0("'method' should be one of",goodmethods,", instead you supplied a ",class(method)," object"))
+  } else {
+    if (!(method %in% goodmethods)) {
+      stop(paste0("'method' should be one of",goodmethods,", instead you provided ",method))
+    }
+  }
+
+  # If method is auto, assign spline if k >= 4 and polynomial if k < 4
+  k <- nrow(margpost)
+  if (method == 'auto') {
+    if (k >=4) {
+      method <- 'spline'
+    } else {
+      method <- 'polynomial'
+    }
+  }
+
+  if (method == 'spline' & k < 4) {
+    warning("You asked to use a cubic B-Spline interpolant for the marginal posteriors, however you have k < 4 so it doesn't work. Using a polynomial interpolant instead.\n")
+    method <- "polynomial"
+  }
+
+  if (method == 'polynomial') {
+    # if (k > 3 & verbose) warning("Polynomial interpolation not recommended with more than 3 quadrature points. Try default_control(method = 'auto') or 'spline'")
+    out <- as.function(polynom::poly.calc(x = margpost$theta,y = margpost$logmargpost))
+  } else if (method == 'spline') {
+    ss <- with(margpost,splines::interpSpline(theta,logmargpost,bSpline = TRUE,sparse = TRUE))
+    out <- function(x) as.numeric(stats::predict(ss,x)$y)
+  } else {
+    stop(paste0("Unrecognized interpolation method ",method,", should be one of 'spline' or 'polynomial'.\n"))
+  }
+  out
 }
 
 #' Compute moments
@@ -200,7 +248,9 @@ compute_moment <- function(obj,...) {
 compute_moment.default <- function(obj,ff = function(x) 1,...) {
   nodesandweights <- obj$nodesandweights
 
-  whereistheta <- grep('theta',colnames(nodesandweights))
+  # whereistheta <- grep('theta',colnames(nodesandweights))
+  whereistheta <- 1:(ncol(nodesandweights)-3)
+
 
   lengthof_f <- length(ff(nodesandweights[1,whereistheta]))
 
@@ -238,6 +288,9 @@ compute_moment.aghq <- function(obj,ff = function(x) 1,...) compute_moment(obj$n
 #' also like the pdf calculated for. See examples. May also have an element \code{jacobian},
 #' a function which takes a numeric vector and computes the jacobian of the transformation; if
 #' not provided, this is done using \code{numDeriv::jacobian}.
+#' @param interpolation Which method to use for interpolating the marginal posterior, \code{'polynomial'} (default)
+#' or \code{'spline'}? If \code{k > 3} then the polynomial may be unstable and you should use the spline, but the spline
+#' doesn't work *unless* \code{k > 3} so it's not the default. See \code{interpolate_marginal_posterior()}.
 #' @param ... Used to pass additional arguments.
 #'
 #' @return A tbl_df/tbl/data.frame with columns \code{theta}, \code{pdf} and \code{cdf} corresponding
@@ -286,11 +339,11 @@ compute_moment.aghq <- function(obj,ff = function(x) 1,...) compute_moment(obj$n
 compute_pdf_and_cdf <- function(obj,...) UseMethod("compute_pdf_and_cdf")
 #' @rdname compute_pdf_and_cdf
 #' @export
-compute_pdf_and_cdf.default <- function(obj,transformation = NULL,finegrid = NULL,...) {
+compute_pdf_and_cdf.default <- function(obj,transformation = NULL,finegrid = NULL,interpolation = 'auto',...) {
 
   if (!is.null(transformation)) transformation <- Map(match.fun,transformation)
 
-  margpostinterp <- interpolate_marginal_posterior(obj)
+  margpostinterp <- interpolate_marginal_posterior(obj,interpolation)
 
   thetacol <- colnames(obj)[grep("theta",colnames(obj))]
 
@@ -397,8 +450,8 @@ compute_pdf_and_cdf.aghq <- function(obj,...) compute_pdf_and_cdf(obj$marginals,
 compute_quantiles <- function(obj,...) UseMethod("compute_quantiles")
 #' @rdname compute_quantiles
 #' @export
-compute_quantiles.default <- function(obj,q = c(.025,.975),transformation = NULL,...) {
-  pdfandcdf <- compute_pdf_and_cdf(obj)
+compute_quantiles.default <- function(obj,q = c(.025,.975),transformation = NULL,interpolation = 'polynomial',...) {
+  pdfandcdf <- compute_pdf_and_cdf(obj,interpolation = interpolation)
   out <- numeric(length(q))
   increasing <- TRUE
 
@@ -449,6 +502,15 @@ compute_quantiles.aghq <- function(obj,q = c(.025,.975),transformation = NULL,..
 #' See \code{?compute_pdf_and_cdf}. Note that unlike there, where this operation is
 #' a bit more complicated, here all is done is samples are taken on the original
 #' scale and then \code{transformation$fromtheta()} is called on them before returning.
+#' @param interpolation Which method to use for interpolating the marginal posteriors
+#' (and hence to draw samples using the inverse CDF method), \code{'auto'} (choose for you), \code{'polynomial'}
+#' or \code{'spline'}? If \code{k > 3} then the polynomial may be unstable and you should use the spline, but the spline
+#' doesn't work *unless* \code{k > 3} so it's not the default. The default of \code{'auto'} figures this out for you.
+#' See \code{interpolate_marginal_posterior()}.
+#' @param numcores Integer, default \code{getOption('mc.cores')}. If greater than 1, the Cholesky decompositions of the Hessians are computed
+#' in parallel using \code{parallel::mcapply}, for the Gaussian approximation involved for objects of class \code{marginallaplace}. This step is slow
+#' so may be sped up by parallelization, if the matrices are sparse (and hence the operation is just slow, but not memory-intensive).
+#' Uses the \code{parallel} package so is not available on Windows.
 #' @param ... Used to pass additional arguments.
 #'
 #' @family sampling
@@ -535,10 +597,10 @@ compute_quantiles.aghq <- function(obj,q = c(.025,.975),transformation = NULL,..
 sample_marginal <- function(quad,...) UseMethod("sample_marginal")
 #' @rdname sample_marginal
 #' @export
-sample_marginal.aghq <- function(quad,M,transformation = NULL,...) {
+sample_marginal.aghq <- function(quad,M,transformation = NULL,interpolation = 'auto',...) {
   out <- list()
   if (is.null(quad$marginals)) return(out)
-  for (i in 1:length(quad$marginals)) out[[i]] <- unname(compute_quantiles(quad$marginals[[i]],stats::runif(M)))
+  for (i in 1:length(quad$marginals)) out[[i]] <- unname(compute_quantiles(quad$marginals[[i]],stats::runif(M),interpolation = interpolation))
 
   if (!is.null(transformation)) {
     if (is.null(transformation$fromtheta)) warning("transformation provided but transformation$fromtheta appears NULL.\n")
@@ -549,11 +611,22 @@ sample_marginal.aghq <- function(quad,M,transformation = NULL,...) {
 }
 #' @rdname sample_marginal
 #' @export
-sample_marginal.marginallaplace <- function(quad,M,transformation = NULL,...) {
+sample_marginal.marginallaplace <- function(quad,M,transformation = NULL,interpolation = 'auto',numcores = getOption('mc.cores',1L),...) {
   K <- as.numeric(quad$normalized_posterior$grid$level)[1]
   d <- dim(quad$modesandhessians$H[[1]])[1]
   simlist <- quad$modesandhessians
-  simlist$L <- lapply(simlist$H,function(h) chol(Matrix::forceSymmetric(h),perm = FALSE))
+  # Avoid use of parallel computing on Windows
+  if (.Platform$OS.type == 'windows') numcores <- 1
+  if (numcores > 1) {
+    # mclapply does not preserve the order of its arguments
+    # simlist$L <- parallel::mclapply(simlist$H,function(h) chol(Matrix::forceSymmetric(h),perm = FALSE),mc.cores = numcores)
+    simlist$L <- parallel::mclapply(simlist$H,function(h) Matrix::Cholesky(as(Matrix::forceSymmetric(h),'sparseMatrix'),perm = TRUE,LDL=FALSE),mc.cores = numcores)
+
+  } else {
+    # simlist$L <- lapply(simlist$H,function(h) chol(Matrix::forceSymmetric(h),perm = FALSE))
+    simlist$L <- lapply(simlist$H,function(h) Matrix::Cholesky(as(Matrix::forceSymmetric(h),'sparseMatrix'),perm = TRUE,LDL=FALSE))
+
+  }
   simlist$lambda <- exp(quad$normalized_posterior$nodesandweights$logpost_normalized) * quad$normalized_posterior$nodesandweights$weights
 
   # Sample from the multinomial
@@ -568,7 +641,9 @@ sample_marginal.marginallaplace <- function(quad,M,transformation = NULL,...) {
   Z <- lapply(split(matrix(stats::rnorm(M*d),nrow = M),k),matrix,nrow = d)
 
   samps <- mapply(
-    function(.x,.y) as.numeric(solve(simlist$L[[as.numeric(.y)]],.x)) + do.call(cbind,rep(list(simlist$mode[[as.numeric(.y)]]),ncol(.x))),
+    # function(.x,.y) as.numeric(solve(simlist$L[[as.numeric(.y)]],.x)) + do.call(cbind,rep(list(simlist$mode[[as.numeric(.y)]]),ncol(.x))),
+    function(.x,.y) as.numeric(Matrix::solve(simlist$L[[as.numeric(.y)]],Matrix::solve(simlist$L[[as.numeric(.y)]],.x,system="Lt"),system='Pt')) + do.call(cbind,rep(list(simlist$mode[[as.numeric(.y)]]),ncol(.x))),
+
     Z,
     names(Z)
   )
@@ -588,8 +663,8 @@ sample_marginal.marginallaplace <- function(quad,M,transformation = NULL,...) {
   samps <- Reduce(cbind,samps)
   samps <- samps[ ,ord]
 
-  theta <- simlist[k,paste0('theta',seq(1,length(grep('theta',colnames(simlist)))))]
-
+  # theta <- simlist[k, paste0("theta", seq(1, length(grep("theta",colnames(simlist)))))]
+  theta <- simlist[k, 1:(ncol(simlist)-5)]
   # In one dimension, R's indexing is not type consistent
   if (!is.matrix(samps)) {
     samps <- rbind(samps)
@@ -604,6 +679,6 @@ sample_marginal.marginallaplace <- function(quad,M,transformation = NULL,...) {
   )
   # Add the marginals from theta|Y, with possible transformation
   class(quad) <- "aghq"
-  out$thetasamples <- sample_marginal(quad,M,transformation,...)
+  out$thetasamples <- sample_marginal(quad,M,transformation,interpolation,...)
   out
 }

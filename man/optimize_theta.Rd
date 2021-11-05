@@ -73,13 +73,14 @@ funlist <- list(
 )
 
 optimize_theta(funlist,1.5)
-optimize_theta(funlist,1.5,control = list(method = "trust"))
-optimize_theta(funlist,1.5,control = list(method = "BFGS"))
+optimize_theta(funlist,1.5,control = default_control(method = "trust"))
+optimize_theta(funlist,1.5,control = default_control(method = "BFGS"))
 
 }
 \seealso{
 Other quadrature: 
 \code{\link{aghq}()},
+\code{\link{get_log_normconst}()},
 \code{\link{laplace_approximation}()},
 \code{\link{marginal_laplace_tmb}()},
 \code{\link{marginal_laplace}()},
@@ -89,7 +90,9 @@ Other quadrature:
 \code{\link{print.aghq}()},
 \code{\link{print.laplacesummary}()},
 \code{\link{print.laplace}()},
+\code{\link{print.marginallaplacesummary}()},
 \code{\link{summary.aghq}()},
-\code{\link{summary.laplace}()}
+\code{\link{summary.laplace}()},
+\code{\link{summary.marginallaplace}()}
 }
 \concept{quadrature}

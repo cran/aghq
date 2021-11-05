@@ -16,6 +16,11 @@
 #' @param whichfirst Integer between 1 and the dimension of the parameter space, default 1.
 #' The user shouldn't have to worry about this: it's used internally to re-order the parameter vector
 #' before doing the quadrature, which is useful when calculating marginal posteriors.
+#' @param basegrid Optional. Provide an object of class \code{NIGrid} from the \code{mvQuad}
+#' package, representing the base quadrature rule that will be adapted. This is only
+#' for users who want more complete control over the quadrature, and is not necessary
+#' if you are fine with the default option which basically corresponds to
+#' \code{mvQuad::createNIGrid(length(theta),'GHe',k,'product')}.
 #' @param ndConstruction Create a multivariate grid using a product or sparse construction?
 #' Passed directly to \code{mvQuad::createNIGrid()}, see that function for further details. Note
 #' that the use of sparse grids within \code{aghq} is currently **experimental** and not supported
@@ -51,8 +56,8 @@
 #'   he = function(x) numDeriv::hessian(objfunc,x)
 #' )
 #' opt_sparsetrust <- optimize_theta(funlist,1.5)
-#' opt_trust <- optimize_theta(funlist,1.5,control = list(method = "trust"))
-#' opt_bfgs <- optimize_theta(funlist,1.5,control = list(method = "BFGS"))
+#' opt_trust <- optimize_theta(funlist,1.5,control = default_control(method = "trust"))
+#' opt_bfgs <- optimize_theta(funlist,1.5,control = default_control(method = "BFGS"))
 #'
 #' # Quadrature with 3, 5, and 7 points using sparse trust region optimization:
 #' norm_sparse_3 <- normalize_logpost(opt_sparsetrust,3,1)
@@ -73,15 +78,24 @@
 #'
 #' @export
 #'
-normalize_logpost <- function(optresults,k,whichfirst = 1,ndConstruction = "product",...) {
+normalize_logpost <- function(optresults,k,whichfirst = 1,basegrid = NULL,ndConstruction = "product",...) {
   if (as.integer(k) != k) stop(paste0("Please provide an integer k, the number of quadrature points. You provided ",k,"which does not satisfy as.integer(k) == k"))
   if (k == 1) {
     # Laplace approx: just return the normalizing constant
-    return(optresults$ff$fn(optresults$mode,...) - as.numeric(.5 * determinant(optresults$hessian,logarithm = TRUE)$modulus)) + log(2*pi)
+    return(optresults$ff$fn(optresults$mode,...) - as.numeric(.5 * determinant(optresults$hessian,logarithm = TRUE)$modulus) + .5*dim(optresults$hessian)[1]*log(2*pi))
   }
   # Create the grid
   S <- length(optresults$mode) # Dimension
-  thegrid <- mvQuad::createNIGrid(dim = S,type = "GHe",level = k,ndConstruction = ndConstruction,...)
+  if (!is.null(basegrid)) {
+    # thegrid <- basegrid
+    # This seems to be the only way to use basegrid without modifying it outside the function, due to how the mvQuad package implements this.
+    thegrid <- with(basegrid,mvQuad::createNIGrid(dim = dim,type = type,level = level,ndConstruction = ndConstruction))
+    # Check
+    if (thegrid$dim != S) stop(paste0("Your startingvalue has dimension ",S,", but the grid you supplied has dimension ",thegrid$dim))
+    if (!all(thegrid$features$initial.domain %in% c(-Inf,Inf))) stop("When supplying your own basegrid, you still have to choose a rule corresponding to a Gaussian kernel for the method to make sense. You chose a rule with initial domain not equal to (-Inf,Inf). Check the mvQuad::createNIGrid documentation for a list of available rules which have domain of integration (-Inf,Inf).")
+  } else {
+    thegrid <- mvQuad::createNIGrid(dim = S,type = "GHe",level = k,ndConstruction = ndConstruction,...)
+  }
   # Reorder the mode and Hessian so that "whichfirst" is first
   # This does not change the normalizing constant of the joint,
   # but is necessary to compute marginals later.
@@ -121,3 +135,36 @@ normalize_logpost <- function(optresults,k,whichfirst = 1,ndConstruction = "prod
     lognormconst = lognormconst
   )
 }
+
+#' Obtain the log-normalizing constant from a fitted quadrature object
+#'
+#' Quick helper S3 method to retrieve the log normalizing constant from an object
+#' created using the aghq package. Methods for a list (returned by \code{aghq::normalize_posterior})
+#' and for objects of class \code{aghq}, \code{laplace}, and \code{marginallaplace}.
+#'
+#' @param obj A list returned by \code{aghq::normalize_posterior} or an object of class \code{aghq}, \code{laplace}, or \code{marginallaplace}.
+#' @param ... Not used
+#'
+#' @return A number representing the natural logarithm of the approximated normalizing constant.
+#'
+#' @family quadrature
+#'
+#' @export
+#'
+get_log_normconst <- function(obj,...) UseMethod("get_log_normconst")
+#' @rdname get_log_normconst
+#' @export
+get_log_normconst.default <- function(obj,...) obj$lognormconst
+#' @rdname get_log_normconst
+#' @export
+get_log_normconst.numeric <- function(obj,...) obj
+#' @rdname get_log_normconst
+#' @export
+get_log_normconst.aghq <- function(obj,...) get_log_normconst(obj$normalized_posterior)
+#' @rdname get_log_normconst
+#' @export
+get_log_normconst.laplace <- function(obj,...) obj$lognormconst
+#' @rdname get_log_normconst
+#' @export
+get_log_normconst.marginallaplace <- function(obj,...) get_log_normconst(obj$normalized_posterior)
+

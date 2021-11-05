@@ -23,6 +23,13 @@
 #' overrides this, and is useful for when you know your optimization is too difficult to be
 #' handled by general-purpose software. See the software paper for several examples of this.
 #' If you're unsure whether this option is needed for your problem then it probably is not.
+#' @param basegrid Optional. Provide an object of class \code{NIGrid} from the \code{mvQuad}
+#' package, representing the base quadrature rule that will be adapted. This is only
+#' for users who want more complete control over the quadrature, and is not necessary
+#' if you are fine with the default option which basically corresponds to
+#' \code{mvQuad::createNIGrid(length(theta),'GHe',k,'product')}. **Note**: the \code{mvQuad}
+#' functions used within \code{aghq} operate on grids in memory, so your \code{basegrid}
+#' object will be changed after you run \code{aghq}.
 #'
 #' @return An object of class \code{aghq} which is a list containing elements:
 #' \itemize{
@@ -48,6 +55,7 @@
 #' \item{\code{convergence}: }{specific to the optimizer used, a message indicating whether it converged}
 #' }
 #' }
+#' \item{control: }{the control parameters passed}
 #' }
 #'
 #' @examples
@@ -85,33 +93,41 @@
 #'
 #' @export
 #'
-aghq <- function(ff,k,startingvalue,optresults = NULL,control = default_control(),...) {
-  # Negate it if asked
-  if (control$negate) {
-    ffa <- list(
-      fn = function(theta) -1 * ff$fn(theta),
-      gr = function(theta) -1 * ff$gr(theta),
-      he = function(theta) -1 * ff$he(theta)
-    )
-  } else {
-    ffa <- ff
+aghq <- function(ff,k,startingvalue,optresults = NULL,basegrid = NULL,control = default_control(),...) {
+
+  validate_control(control)
+
+  # If they provided a basegrid, get the k from that. If they also provided a k, compare them and issue a warning
+  if (!is.null(basegrid)) {
+    if (missing(k)) {
+      k <- max(as.numeric(basegrid$level))
+    } else {
+      k2 <- max(as.numeric(basegrid$level))
+      if (k != k2) {
+        warning(paste0("You provided a basegrid and a specified number of quadrature points k. You do not need to specify k if you supply a basegrid. Further, they don't match: your grid has k = ",k2,", but you specified k = ",k,". Proceeding with k = ",k2,", from the supplied grid.\n"))
+        k <- k2
+      }
+    }
   }
 
   # Optimization
-  if (is.null(optresults)) utils::capture.output(optresults <- optimize_theta(ffa,startingvalue,control,...))
+  if (is.null(optresults)) utils::capture.output(optresults <- optimize_theta(ff,startingvalue,control,...))
 
   # Normalization
-  normalized_posterior <- normalize_logpost(optresults,k,ndConstruction = control$ndConstruction,...)
+  normalized_posterior <- normalize_logpost(optresults,k,basegrid = basegrid,ndConstruction = control$ndConstruction,...)
+
+  if (control$onlynormconst) return(normalized_posterior$lognormconst)
 
   # Marginals
   d <- length(startingvalue)
   marginals <- vector(mode = "list",length = d)
-  for (j in 1:d) marginals[[j]] <- marginal_posterior(optresults,k,j,control$ndConstruction)
+  for (j in 1:d) marginals[[j]] <- marginal_posterior(optresults,k,j,basegrid,control$ndConstruction)
 
   out <- list(
     normalized_posterior = normalized_posterior,
     marginals = marginals,
-    optresults = optresults
+    optresults = optresults,
+    control = control
   )
   class(out) <- "aghq"
   out
@@ -183,11 +199,13 @@ aghq <- function(ff,k,startingvalue,optresults = NULL,control = default_control(
 summary.aghq <- function(object,...) {
   d <- length(object$optresults$mode)
 
+  thetanames <- colnames(object$normalized_posterior$nodesandweights)[1:d]
+
   # Moments
   themeans <- compute_moment(object$normalized_posterior,function(x) x)
   thesds <- numeric(d)
   for (j in 1:d) thesds[j] <- sqrt(compute_moment(object$normalized_posterior,function(x) (x - themeans[j])^2)[j])
-  names(thesds) <- names(themeans)
+  names(thesds) <- names(themeans) <- thetanames
 
   themoments <- cbind(themeans,thesds)
   colnames(themoments) <- c('mean','sd')
@@ -195,13 +213,14 @@ summary.aghq <- function(object,...) {
 
   # Quantiles
   thequants <- vector(mode = 'list',length = d)
-  for (j in 1:d) thequants[[j]] <- compute_quantiles(object$marginals[[j]],c(.025,.5,.975))
-  names(thequants) <- paste0("theta",1:d)
+  for (j in 1:d) thequants[[j]] <- compute_quantiles(object$marginals[[j]],c(.025,.5,.975),interpolation = object$control$interpolation)
+  names(thequants) <- thetanames
   thequants <- t(as.data.frame(thequants))
   colnames(thequants)[2] <- 'median'
 
   thesummary <- cbind(themoments,thequants,data.frame(mode = object$optresults$mode))
   thesummary <- thesummary[ ,c('mean','median','mode','sd','2.5%','97.5%')]
+
 
   out <- list()
   class(out) <- "aghqsummary"
@@ -323,14 +342,14 @@ print.aghqsummary <- function(x,...) {
   cat("AGHQ on a",x$dim,"dimensional posterior with ",x$quadpoints,"quadrature points\n\n")
   cat("The posterior mode is:",x$mode,"\n\n")
   cat("The log of the normalizing constant/marginal likelihood is:",x$lognormconst,"\n\n")
-  cat("The posterior Hessian at the mode is:\n")
-  print(as.matrix(x$hessian))
-  cat("\n")
+  # cat("The posterior Hessian at the mode is:\n")
+  # print(as.matrix(x$hessian))
+  # cat("\n")
   cat("The covariance matrix used for the quadrature is...\n")
   print(as.matrix(x$covariance))
-  cat("\n")
-  cat("...and its Cholesky is:\n")
-  print(as.matrix(x$cholesky))
+  # cat("\n")
+  # cat("...and its Cholesky is:\n")
+  # print(as.matrix(x$cholesky))
   cat("\n")
   cat("Here are some moments and quantiles for theta:\n\n")
   print(x$summarytable)
@@ -388,7 +407,7 @@ plot.aghq <- function(x,...) {
   d <- length(x$marginals)
   # Compute pdf and cdf
   pdfandcdf <- vector(mode = 'list',length = d)
-  for (j in 1:d) pdfandcdf[[j]] <- compute_pdf_and_cdf(x$marginals[[j]])
+  for (j in 1:d) pdfandcdf[[j]] <- compute_pdf_and_cdf(x$marginals[[j]],interpolation = x$control$interpolation)
 
   for (j in 1:d) {
     graphics::plot(pdfandcdf[[j]]$pdf ~ pdfandcdf[[j]]$theta,
@@ -460,7 +479,21 @@ plot.aghq <- function(x,...) {
 #' @export
 #'
 laplace_approximation <- function(ff,startingvalue,optresults = NULL,control = default_control(),...) {
-  if(is.null(optresults)) utils::capture.output(optresults <- optimize_theta(ff,startingvalue,control,...))
+
+  validate_control(control)
+
+  # Negate it if asked
+  if (control$negate) {
+    ffa <- list(
+      fn = function(theta) -1 * ff$fn(theta),
+      gr = function(theta) -1 * ff$gr(theta),
+      he = function(theta) -1 * ff$he(theta)
+    )
+  } else {
+    ffa <- ff
+  }
+
+  if(is.null(optresults)) utils::capture.output(optresults <- optimize_theta(ffa,startingvalue,control,...))
   lognorm <- normalize_logpost(optresults,1,...)
   out <- list(lognormconst = lognorm,optresults = optresults)
   class(out) <- "laplace"
@@ -736,6 +769,8 @@ print.laplacesummary <- function(x,...) {
 #'
 marginal_laplace <- function(ff,k,startingvalue,optresults = NULL,control = default_control_marglaplace(),...) {
 
+  validate_control(control,type = 'marglaplace')
+
   # Negate it if asked
   if (control$negate) {
     ffa <- list(
@@ -841,7 +876,7 @@ marginal_laplace <- function(ff,k,startingvalue,optresults = NULL,control = defa
     #   )
     # }
 
-    utils::capture.output(lap <- laplace_approximation(ffinner,Wstart,optresults = optresults,control = list(method = control$inner_method)))
+    utils::capture.output(lap <- laplace_approximation(ffinner,Wstart,optresults = optresults,control = default_control(method = control$inner_method,negate = FALSE)))
 
     add_elements(theta,lap$optresults$mode,lap$optresults$hessian,whichenv = whichenv)
 
@@ -904,8 +939,10 @@ marginal_laplace <- function(ff,k,startingvalue,optresults = NULL,control = defa
       he = function(W) ffa$he(W,theta)
     )
 
-    utils::capture.output(lap <- laplace_approximation(ffinner,Wstart,control = list(method = control$inner_method)))
-    modesandhessians[i,'mode'] <- list(list(lap$optresults$mode))
+    utils::capture.output(lap <- laplace_approximation(ffinner,Wstart,control = default_control(method = control$inner_method,negate=FALSE)))
+    mtmp <- lap$optresults$mode
+    names(mtmp) <- paste0("W",1:length(mtmp))
+    modesandhessians[i,'mode'] <- list(list(mtmp))
     modesandhessians[i,'H'] <- list(list(lap$optresults$hessian))
     modesandhessians[i,'logpost'] <- as.numeric(lap$lognormconst)
 
@@ -916,6 +953,7 @@ marginal_laplace <- function(ff,k,startingvalue,optresults = NULL,control = defa
   ww <- nodesandweights$weights
 
   lognormconst <- logsumexp(log(ww) + lp)
+  if (control$onlynormconst) return(lognormconst)
 
   nodesandweights$logpost <- lp
   nodesandweights$logpost_normalized <- lp - lognormconst
@@ -934,7 +972,8 @@ marginal_laplace <- function(ff,k,startingvalue,optresults = NULL,control = defa
     normalized_posterior = normalized_posterior,
     marginals = marginals,
     optresults = outeropt,
-    modesandhessians = modesandhessians
+    modesandhessians = modesandhessians,
+    control = control
   )
   class(out) <- c("marginallaplace","aghq")
   out
@@ -992,14 +1031,22 @@ marginal_laplace <- function(ff,k,startingvalue,optresults = NULL,control = defa
 #'
 #' @export
 #'
-marginal_laplace_tmb <- function(ff,k,startingvalue,optresults = NULL,control = default_control_tmb(),...) {
+marginal_laplace_tmb <- function(ff,k,startingvalue,optresults = NULL,basegrid = NULL,control = default_control_tmb(),...) {
+
+  validate_control(control,type='tmb')
+
+  # Get names from TMB function template
+  thetanames <- NULL
+  if (exists('par',ff)) thetanames <- names(ff$par)
+
   # Hessian
   if (control$numhessian) {
-    ff$he <- function(theta) numDeriv::jacobian(ff$gr,theta,method = 'simple')
+    ff$he <- function(theta) numDeriv::jacobian(ff$gr,theta,method = 'Richardson')
   }
   ## Do aghq ##
   # The aghq
-  quad <- aghq(ff,k,startingvalue,optresults,control,...)
+  quad <- aghq(ff = ff,k = k,startingvalue = startingvalue,optresults = optresults,basegrid = basegrid,control = control,...)
+  if (control$onlynormconst) return(quad) # NOTE: control was passed to aghq here so quad should itself just be a number
 
   ## Add on the info needed for marginal Laplace ##
   # Add on the quad point modes and curvatures
@@ -1007,11 +1054,21 @@ marginal_laplace_tmb <- function(ff,k,startingvalue,optresults = NULL,control = 
   if (!is.data.frame(distinctthetas)) distinctthetas <- data.frame(theta1 = distinctthetas)
 
   modesandhessians <- distinctthetas
+  if (is.null(thetanames)) {
+    thetanames <- colnames(distinctthetas)
+  } else {
+    colnames(modesandhessians) <- thetanames
+    colnames(quad$normalized_posterior$nodesandweights)[grep('theta',colnames(quad$normalized_posterior$nodesandweights))] <- thetanames
+  }
   modesandhessians$mode <- vector(mode = 'list',length = nrow(distinctthetas))
   modesandhessians$H <- vector(mode = 'list',length = nrow(distinctthetas))
 
-  thetanames <- colnames(distinctthetas)
-
+  # if (is.null(thetanames)) {
+  #   thetanames <- colnames(distinctthetas)
+  # } else {
+  #   colnames(modesandhessians)[colnames(modesandhessians) == colnames(distinctthetas)] <- thetanames
+  #   colnames(quad$normalized_posterior$nodesandweights)[grep('theta',colnames(quad$normalized_posterior$nodesandweights))] <- thetanames
+  # }
 
     for (i in 1:nrow(distinctthetas)) {
       # Get the theta
@@ -1031,4 +1088,177 @@ marginal_laplace_tmb <- function(ff,k,startingvalue,optresults = NULL,control = 
 
   class(quad) <- c("marginallaplace","aghq")
   quad
+}
+
+#' Summary statistics for models using marginal Laplace approximations
+#'
+#' The \code{summary.marginallaplace} calls \code{summary.aghq}, but also computes
+#' summary statistics of the random effects, by drawing from their approximate
+#' posterior using \code{aghq::sample_marginal} with the specified number
+#' of samples.
+#'
+#' @param object Object inheriting from **both** classes \code{aghq} and \code{marginallaplace},
+#' for example as returned by \code{aghq::marginal_laplace} or \code{aghq::marginal_laplace_tmb}.
+#' @param M Number of samples to use to compute summary statistics of the random effects.
+#' Default \code{1000}. Lower runs faster, higher is more accurate.
+#' @param max_print Sometimes there are a lot of random effects. If there are more random
+#' effects than \code{max_print}, the random effects aren't summarized, and a note is printed
+#' to this effect. Default \code{30}.
+#' @param ... not used.
+#'
+#' @return A list containing an object of class \code{aghqsummary} (see \code{summary.aghq})
+#' plus the following objects:
+#'
+#' @family quadrature
+#'
+#' @examples
+#' logfteta2d <- function(eta,y) {
+#'   # eta is now (eta1,eta2)
+#'   # y is now (y1,y2)
+#'   n <- length(y)
+#'   n1 <- ceiling(n/2)
+#'   n2 <- floor(n/2)
+#'   y1 <- y[1:n1]
+#'   y2 <- y[(n1+1):(n1+n2)]
+#'   eta1 <- eta[1]
+#'   eta2 <- eta[2]
+#'   sum(y1) * eta1 - (length(y1) + 1) * exp(eta1) - sum(lgamma(y1+1)) + eta1 +
+#'     sum(y2) * eta2 - (length(y2) + 1) * exp(eta2) - sum(lgamma(y2+1)) + eta2
+#' }
+#' set.seed(84343124)
+#' n1 <- 5
+#' n2 <- 5
+#' n <- n1+n2
+#' y1 <- rpois(n1,5)
+#' y2 <- rpois(n2,5)
+#
+#' objfunc2d <- function(x) logfteta2d(x,c(y1,y2))
+#' objfunc2dmarg <- function(W,theta) objfunc2d(c(W,theta))
+#' objfunc2dmarggr <- function(W,theta) {
+#'   fn <- function(W) objfunc2dmarg(W,theta)
+#'   numDeriv::grad(fn,W)
+#' }
+#' objfunc2dmarghe <- function(W,theta) {
+#'   fn <- function(W) objfunc2dmarg(W,theta)
+#'   numDeriv::hessian(fn,W)
+#' }
+#'
+#' funlist2dmarg <- list(
+#'   fn = objfunc2dmarg,
+#'   gr = objfunc2dmarggr,
+#'   he = objfunc2dmarghe
+#' )
+#'
+#' themarginallaplace <- aghq::marginal_laplace(funlist2dmarg,3,list(W = 0,theta = 0))
+#' summary(themarginallaplace)
+#' @export
+#'
+summary.marginallaplace <- function(object,M=1e03,max_print=30,...) {
+
+  p <- length(object$modesandhessians$mode[[1]])
+  summ <- summary.aghq(object,...)
+  if (p > max_print) {
+    cat(paste0("There are ",p," random effects, but max_print = ",max_print,", so not computing their summary information.\nSet max_print higher than ",p," if you would like to summarize the random effects.\n"))
+    return(summ)
+  }
+
+  samps <- aghq::sample_marginal(object,M,...)
+  means <- apply(samps$samps,1,mean)
+  medians <- apply(samps$samps,1,stats::median)
+  sds <- apply(samps$samps,1,stats::sd)
+  quants <- t(apply(samps$samps,1,stats::quantile,probs = c(.025,.975)))
+
+  modes <- with(object,mapply(modesandhessians$mode,exp(normalized_posterior$nodesandweights$logpost_normalized)*normalized_posterior$nodesandweights$weights,FUN = '*'))
+  if (is.array(modes)) {
+    modes <- apply(modes,1,sum)
+  } else {
+    modes <- sum(modes)
+  }
+
+  randomeffectsummary <- data.frame(
+    mean = means,
+    median = medians,
+    mode = modes,
+    sd = sds,
+    `2.5%` = quants[ ,1],
+    `97.5%` = quants[ ,2]
+  )
+  colnames(randomeffectsummary) <- colnames(summ$summarytable)
+  rownames(randomeffectsummary) <- NULL
+
+  randomeffectsummary$variable <- names(object$modesandhessians$mode[[1]])
+
+  out <- list(
+    aghqsummary = summ,
+    randomeffectsummary = randomeffectsummary,
+    info = c("M" = M,"max_print" = max_print)
+  )
+  class(out) <- "marginallaplacesummary"
+  out
+}
+
+#' Summary statistics for models using marginal Laplace approximations
+#'
+#' The \code{summary.marginallaplace} calls \code{summary.aghq}, but also computes
+#' summary statistics of the random effects, by drawing from their approximate
+#' posterior using \code{aghq::sample_marginal} with the specified number
+#' of samples.
+#'
+#' @param x Object of class \code{marginallaplacesummary} returned by calling
+#' \code{summary} on an object of class \code{marginallaplace}.
+#' @param ... not used.
+#'
+#' @return Nothing. Prints contents.
+#'
+#' @family quadrature
+#'
+#' @examples
+#' logfteta2d <- function(eta,y) {
+#'   # eta is now (eta1,eta2)
+#'   # y is now (y1,y2)
+#'   n <- length(y)
+#'   n1 <- ceiling(n/2)
+#'   n2 <- floor(n/2)
+#'   y1 <- y[1:n1]
+#'   y2 <- y[(n1+1):(n1+n2)]
+#'   eta1 <- eta[1]
+#'   eta2 <- eta[2]
+#'   sum(y1) * eta1 - (length(y1) + 1) * exp(eta1) - sum(lgamma(y1+1)) + eta1 +
+#'     sum(y2) * eta2 - (length(y2) + 1) * exp(eta2) - sum(lgamma(y2+1)) + eta2
+#' }
+#' set.seed(84343124)
+#' n1 <- 5
+#' n2 <- 5
+#' n <- n1+n2
+#' y1 <- rpois(n1,5)
+#' y2 <- rpois(n2,5)
+#
+#' objfunc2d <- function(x) logfteta2d(x,c(y1,y2))
+#' objfunc2dmarg <- function(W,theta) objfunc2d(c(W,theta))
+#' objfunc2dmarggr <- function(W,theta) {
+#'   fn <- function(W) objfunc2dmarg(W,theta)
+#'   numDeriv::grad(fn,W)
+#' }
+#' objfunc2dmarghe <- function(W,theta) {
+#'   fn <- function(W) objfunc2dmarg(W,theta)
+#'   numDeriv::hessian(fn,W)
+#' }
+#'
+#' funlist2dmarg <- list(
+#'   fn = objfunc2dmarg,
+#'   gr = objfunc2dmarggr,
+#'   he = objfunc2dmarghe
+#' )
+#'
+#' themarginallaplace <- aghq::marginal_laplace(funlist2dmarg,3,list(W = 0,theta = 0))
+#' summary(themarginallaplace)
+#' @export
+#'
+print.marginallaplacesummary <- function(x,...) {
+  cat("\n==========================================================\n\n")
+  cat(paste0("Fixed effects:\n"))
+  print(x$aghqsummary)
+  cat("==========================================================\n\n")
+  cat(paste0("Random effects, based on ",x$info['M']," approximate posterior samples:\n"))
+  print(x$randomeffectsummary)
 }

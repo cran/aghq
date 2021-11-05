@@ -1,4 +1,5 @@
 # devtools::load_all()
+# options(mc.cores = 2)
 logfteta <- function(eta,y) {
   sum(y) * eta - (length(y) + 1) * exp(eta) - sum(lgamma(y+1)) + eta
 }
@@ -15,10 +16,10 @@ funlist <- list(
   he = function(x) numDeriv::hessian(objfunc,x)
 )
 
-opt_sparsetrust <- optimize_theta(funlist,1.5)
-opt_sr1 <- optimize_theta(funlist,1.5,control = list(method = "SR1"))
-opt_trust <- optimize_theta(funlist,1.5,control = list(method = "trust"))
-opt_bfgs <- optimize_theta(funlist,1.5,control = list(method = "BFGS"))
+opt_sparsetrust <- optimize_theta(funlist,1.5,control = default_control(method = "sparse_trust"))
+opt_sr1 <- optimize_theta(funlist,1.5,control = default_control(method = "SR1"))
+opt_trust <- optimize_theta(funlist,1.5,control = default_control(method = "trust"))
+opt_bfgs <- optimize_theta(funlist,1.5,control = default_control(method = "BFGS"))
 
 norm_sparse_3 <- normalize_logpost(opt_sparsetrust,3,1)
 norm_sparse_5 <- normalize_logpost(opt_sparsetrust,5,1)
@@ -79,10 +80,10 @@ funlist2d <- list(
   he = function(x) numDeriv::hessian(objfunc2d,x)
 )
 
-opt_sparsetrust_2d <- optimize_theta(funlist2d,c(1.5,1.5))
-opt_trust_2d <- optimize_theta(funlist2d,c(1.5,1.5),control = list(method = "trust"))
-opt_sr1_2d <- optimize_theta(funlist2d,c(1.5,1.5),control = list(method = "SR1"))
-opt_bfgs_2d <- optimize_theta(funlist2d,c(1.5,1.5),control = list(method = "BFGS"))
+opt_sparsetrust_2d <- optimize_theta(funlist2d,c(1.5,1.5),control = default_control(method = "sparse_trust"))
+opt_trust_2d <- optimize_theta(funlist2d,c(1.5,1.5),control = default_control(method = "trust"))
+opt_sr1_2d <- optimize_theta(funlist2d,c(1.5,1.5),control = default_control(method = "SR1"))
+opt_bfgs_2d <- optimize_theta(funlist2d,c(1.5,1.5),control = default_control(method = "BFGS"))
 
 norm_sparse_2d_3 <- normalize_logpost(opt_sparsetrust_2d,3,1)
 norm_sparse_2d_5 <- normalize_logpost(opt_sparsetrust_2d,5,1)
@@ -153,6 +154,21 @@ aghqnormconst2d_new <- compute_moment(thequadrature)
 
 aghqmean2d_new <- compute_moment(thequadrature,function(x) x)
 
+# Test the two types of interpolation
+thequadrature_k7 <- aghq(funlist2d,25,c(0,0)) # 25 quad points leads to bad poly interp
+pdf_poly_2d <- compute_pdf_and_cdf(thequadrature_k7,transformation = list(totheta = log,fromtheta = exp),interpolation='polynomial')
+pdf_spline_2d <- compute_pdf_and_cdf(thequadrature_k7,transformation = list(totheta = log,fromtheta = exp),interpolation = 'spline')
+# Sampling
+set.seed(708968)
+polysamps <- sample_marginal(thequadrature_k7,1e03)
+splinesamps <- sample_marginal(thequadrature_k7,1e03,interpolation = 'spline')
+if (FALSE) {
+  par(mfrow = c(1,2))
+  hist(polysamps[[1]],breaks = 50,freq=FALSE)
+  hist(splinesamps[[1]],breaks = 50,freq=FALSE)
+
+}
+
 # Laplace
 
 thelaplace <- laplace_approximation(funlist2d,c(0,0))
@@ -176,7 +192,10 @@ funlist2dmarg <- list(
 )
 
 themarginallaplace <- aghq::marginal_laplace(funlist2dmarg,3,list(W = 0,theta = 0))
+set.seed(7809685)
 themargsamps <- aghq::sample_marginal(themarginallaplace,10)
+set.seed(7809685)
+themargsamps_parallel <- aghq::sample_marginal(themarginallaplace,10,numcores = 2)
 
 ## A 3d example ##
 # This is necessary because I want a 2d marginal example
@@ -221,10 +240,10 @@ funlist3d <- list(
 )
 
 
-opt_sparsetrust_3d <- optimize_theta(funlist3d,c(1.5,1.5,1.5))
-opt_trust_3d <- optimize_theta(funlist3d,c(1.5,1.5,1.5),control = list(method = "trust"))
-opt_sr1_3d <- optimize_theta(funlist3d,c(1.5,1.5,1.5),control = list(method = "SR1"))
-opt_bfgs_3d <- optimize_theta(funlist3d,c(1.5,1.5,1.5),control = list(method = "BFGS"))
+opt_sparsetrust_3d <- optimize_theta(funlist3d,c(1.5,1.5,1.5),control = default_control(method = "sparse_trust"))
+opt_trust_3d <- optimize_theta(funlist3d,c(1.5,1.5,1.5),control = default_control(method = "trust"))
+opt_sr1_3d <- optimize_theta(funlist3d,c(1.5,1.5,1.5),control = default_control(method = "SR1"))
+opt_bfgs_3d <- optimize_theta(funlist3d,c(1.5,1.5,1.5),control = default_control(method = "BFGS"))
 
 norm_sparse_3d_3 <- normalize_logpost(opt_sparsetrust_3d,3,1)
 norm_sparse_3d_5 <- normalize_logpost(opt_sparsetrust_3d,5,1)
@@ -327,14 +346,130 @@ themargsamps3d_2 <- aghq::sample_marginal(themarginallaplace3d_2,10)
 
 ## Sparse Grids ##
 # doesn't make sense in 1d, do 2d
-# sparsegrid_2d <- aghq(funlist2d,5,c(0,0),control = default_control(ndConstruction = 'sparse'))
-# sparsenormconst_2d <- compute_moment(sparsegrid_2d) # Should be 1
+sparsegrid_2d <- aghq(funlist2d,5,c(0,0),control = default_control(ndConstruction = 'sparse'))
+sparsenormconst_2d <- compute_moment(sparsegrid_2d) # Should be 1
 
 ## Control Params ##
 cntrl_base <- default_control()
 cntrl_marg <- default_control_marglaplace()
 cntrl_tmb <- default_control_tmb()
 
+# Laplace approx
+logint1 <- function(x,n) n*log(x) - x
+logaghq <- function(n) {
+  ff <- list(
+    fn = function(x) logint1(x,n),
+    gr = function(x) numDeriv::grad(logint1,x,n=n),
+    he = function(x) numDeriv::hessian(logint1,x,n=n)
+  )
+  aghq::laplace_approximation(ff,n)$lognormconst
+}
+logstirling <- function(n) (1/2)*log(2*pi) + (1/2)*log(n) + n*(log(n) - 1)
+la5 <- round(logaghq(5),11)
+ls5 <- round(logstirling(5),11)
+la10 <- round(logaghq(10),11)
+ls10 <- round(logstirling(10),11)
+la100 <- round(logaghq(100),11)
+ls100 <- round(logstirling(100),11)
 
+## Custom grid ----
+# GHQ, 1d
+gg1 <- mvQuad::createNIGrid(1,'GHe',5)
+aghq_customgrid_gg1 <- aghq(funlist,5,0,basegrid = gg1)
+aghq_customgrid_auto1 <- aghq(funlist,5,0,basegrid = NULL)
+
+# GHQ, 2d
+gg2 <- mvQuad::createNIGrid(2,'GHe',5)
+aghq_customgrid_gg2 <- aghq(funlist2d,5,c(0,0),basegrid = gg2)
+aghq_customgrid_auto2 <- aghq(funlist2d,5,c(0,0),basegrid = NULL)
+
+# GHQ, 2d, sparse grid
+gg2s <- mvQuad::createNIGrid(2,'GHe',5,ndConstruction = 'sparse')
+aghq_customgrid_gg2s <- aghq(funlist2d,5,c(0,0),basegrid = gg2s)
+aghq_customgrid_auto2s <- aghq(funlist2d,5,c(0,0),basegrid = NULL,control = default_control(ndConstruction = 'sparse'))
+
+# Non-GHQ, 2d, but still Gaussian
+gg3 <- mvQuad::createNIGrid(2,'nHe',5)
+aghq_customgrid_gg3 <- aghq(funlist2d,5,c(0,0),basegrid = gg2)
+
+# Non-Gaussian kernel, should throw an error
+gg4 <- mvQuad::createNIGrid(2,'GLe',5)
+
+# Create a new grid for later check
+gg5 <- mvQuad::createNIGrid(2,'GHe',5)
+# Check that not providing k works
+gg6 <- mvQuad::createNIGrid(2,'GHe',5)
+aghq_customgrid_gg6 <- aghq(funlist2d,startingvalue = c(0,0),basegrid = gg6)
+
+# Check that the grid isn't modified
+gg7 <- mvQuad::createNIGrid(1,'GHe',5)
+
+
+
+## Extraction of log normalizing constants
+normconst1 <- get_log_normconst(thequadrature)
+normconst2 <- get_log_normconst(thelaplace)
+normconst3 <- get_log_normconst(themarginallaplace)
+
+## Optimization: controls work
+
+funlist3dneg <- with(funlist3d,list(
+  fn = function(x) -1*fn(x),
+  gr = function(x) -1*gr(x),
+  he = function(x) -1*he(x)
+))
+opt_controlworks1 <- optimize_theta(funlist3d,c(0,0,0))
+# Negate
+opt_controlworks2 <- optimize_theta(funlist3dneg,c(0,0,0),control=default_control(negate=TRUE))
+# Numeric hessian
+funlist3dnohess <- funlist3dneg
+funlist3dnohess$he <- NULL
+opt_controlworks3 <- optimize_theta(funlist3d,c(0,0,0),control = default_control_tmb(negate=FALSE,numhessian = TRUE))
+
+# but now, make sure aghq still works!
+aghq_controlworks1 <- aghq(funlist3d,5,c(0,0,0))
+aghq_controlworks2 <- aghq(funlist3dneg,5,c(0,0,0),control=default_control(negate=TRUE))
+aghq_controlworks3 <- aghq(funlist3d,5,c(0,0,0),control = default_control(negate=FALSE,numhessian = TRUE))
+
+
+
+## Control argument validation
+goodcontrol_aghq <- default_control()
+goodcontrol_marglaplace <- default_control_marglaplace()
+goodcontrol_tmb <- default_control_tmb()
+
+badcontrol1_aghq <- goodcontrol_aghq
+badcontrol1_aghq$negate <- NULL
+badcontrol2_aghq <- goodcontrol_aghq
+badcontrol2_aghq$foo <- 'bar'
+badcontrol3_aghq <- goodcontrol_aghq
+badcontrol3_aghq$foo <- 'bar'
+badcontrol3_aghq$negate <- NULL
+
+badcontrol1_marglaplace <- goodcontrol_marglaplace
+badcontrol1_marglaplace$negate <- NULL
+badcontrol2_marglaplace <- goodcontrol_marglaplace
+badcontrol2_marglaplace$foo <- 'bar'
+badcontrol3_marglaplace <- goodcontrol_marglaplace
+badcontrol3_marglaplace$foo <- 'bar'
+badcontrol3_marglaplace$negate <- NULL
+
+badcontrol1_tmb <- goodcontrol_tmb
+badcontrol1_tmb$negate <- NULL
+badcontrol2_tmb <- goodcontrol_tmb
+badcontrol2_tmb$foo <- 'bar'
+badcontrol3_tmb <- goodcontrol_tmb
+badcontrol3_tmb$foo <- 'bar'
+badcontrol3_tmb$negate <- NULL
+
+## Test returning only the normconst
+aghq_normconst1 <- aghq(funlist3d,5,c(0,0,0),control = default_control(onlynormconst = TRUE))
+marglaplace_normconst1 <- aghq::marginal_laplace(funlist2dmarg,3,list(W = 0,theta = 0),control = default_control_marglaplace(onlynormconst = TRUE))
+
+## Test summary for marglaplace
+mlsumm1 <- summary(themarginallaplace)
+mlsumm2 <- summary(themarginallaplace3d_1)
+mlsumm3 <- summary(themarginallaplace,M=100)
+mlsumm4 <- summary(themarginallaplace3d_1,max_print=1)
 
 

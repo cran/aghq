@@ -66,8 +66,8 @@
 #' )
 #'
 #' optimize_theta(funlist,1.5)
-#' optimize_theta(funlist,1.5,control = list(method = "trust"))
-#' optimize_theta(funlist,1.5,control = list(method = "BFGS"))
+#' optimize_theta(funlist,1.5,control = default_control(method = "trust"))
+#' optimize_theta(funlist,1.5,control = default_control(method = "BFGS"))
 #'
 #' @family quadrature
 #'
@@ -76,14 +76,30 @@
 #' @importFrom methods as
 #' @export
 optimize_theta <- function(ff,startingvalue,control = default_control(),...) {
-  optfunc <- function(x,...) -1 * ff$fn(x,...)
-  optgrad <- function(x,...) as.numeric(-1 * ff$gr(x,...))
-  opthess <- function(x,...) as.matrix(-1 * ff$he(x,...))
+  ffa <- ff
+  # Negate it if asked
+  if (control$negate) {
+    ffa$fn = function(theta) -1 * ff$fn(theta)
+    ffa$gr = function(theta) -1 * ff$gr(theta)
+    ffa$he = function(theta) -1 * ff$he(theta)
+  }
+  # Confusing, this negation is separate from the above
+  # This one is so that the optimization receives the negative logpost
+  optfunc <- function(x,...) -1 * ffa$fn(x,...)
+  optgrad <- function(x,...) as.numeric(-1 * ffa$gr(x,...))
+  opthess <- function(x,...) as.matrix(-1 * ffa$he(x,...))
+
+  # Add the numerically differentiated hessian for the user, if requested
+  if (exists('numhessian',control)) {
+    if (control$numhessian) {
+      ffa$he <- function(theta) numDeriv::jacobian(ffa$gr,theta,method = 'Richardson')
+    }
+  }
 
   method <- control$method[1]
 
   if (method == "sparse_trust") {
-    if (!("trustOptim" %in% rownames(installed.packages()))) stop("Method = sparse_trust requires the trustOptim package, but you do not have this package installed.")
+    if (!requireNamespace("trustOptim", quietly = TRUE)) stop("Method = sparse_trust requires the trustOptim package, but you do not have this package installed.")
     if (is.null(control$optcontrol)) control$optcontrol <- list(maxit = 1e03)
     opt <- trustOptim::trust.optim(
       x = startingvalue,
@@ -95,14 +111,14 @@ optimize_theta <- function(ff,startingvalue,control = default_control(),...) {
       ...
     )
     out <- list(
-      ff = ff,
+      ff = ffa,
       mode = opt$solution,
       hessian = opt$hessian,
       convergence = opt$status
     )
   }
   else if (method == "SR1") {
-    if (!("trustOptim" %in% rownames(installed.packages()))) stop("Method = SR1 requires the trustOptim package, but you do not have this package installed.")
+    if (!requireNamespace("trustOptim", quietly = TRUE)) stop("Method = SR1 requires the trustOptim package, but you do not have this package installed.")
     if (is.null(control$optcontrol)) control$optcontrol <- list(maxit = 1e03)
     opt <- trustOptim::trust.optim(
       x = startingvalue,
@@ -113,14 +129,14 @@ optimize_theta <- function(ff,startingvalue,control = default_control(),...) {
       ...
     )
     out <- list(
-      ff = ff,
+      ff = ffa,
       mode = opt$solution,
       hessian = as(opthess(opt$solution,...),"dgCMatrix"),
       convergence = opt$status
     )
   }
   else if (method == "trust") {
-    if (!("trust" %in% rownames(installed.packages()))) stop("Method = trust requires the trust package, but you do not have this package installed.")
+    if (!requireNamespace("trust", quietly = TRUE)) stop("Method = trust requires the trust package, but you do not have this package installed.")
     funlist <- function(x,...) {
       list(
         value = optfunc(x,...),
@@ -137,7 +153,7 @@ optimize_theta <- function(ff,startingvalue,control = default_control(),...) {
       ...
     )
     out <- list(
-      ff = ff,
+      ff = ffa,
       mode = opt$argument,
       hessian = opt$hessian,
       convergence = opt$converged
@@ -147,7 +163,7 @@ optimize_theta <- function(ff,startingvalue,control = default_control(),...) {
     if (is.null(control$optcontrol)) control$optcontrol <- list()
     opt <- optim(startingvalue,optfunc,optgrad,method = "BFGS",control = list(),...)
     out <- list(
-      ff = ff,
+      ff = ffa,
       mode = opt$par,
       hessian = opthess(opt$par,...),
       convergence = opt$convergence

@@ -8,6 +8,7 @@ normalize_logpost(
   optresults,
   k,
   whichfirst = 1,
+  basegrid = NULL,
   ndConstruction = "product",
   ...
 )
@@ -21,6 +22,12 @@ approximation.}
 \item{whichfirst}{Integer between 1 and the dimension of the parameter space, default 1.
 The user shouldn't have to worry about this: it's used internally to re-order the parameter vector
 before doing the quadrature, which is useful when calculating marginal posteriors.}
+
+\item{basegrid}{Optional. Provide an object of class \code{NIGrid} from the \code{mvQuad}
+package, representing the base quadrature rule that will be adapted. This is only
+for users who want more complete control over the quadrature, and is not necessary
+if you are fine with the default option which basically corresponds to
+\code{mvQuad::createNIGrid(length(theta),'GHe',k,'product')}.}
 
 \item{ndConstruction}{Create a multivariate grid using a product or sparse construction?
 Passed directly to \code{mvQuad::createNIGrid()}, see that function for further details. Note
@@ -63,8 +70,8 @@ funlist <- list(
   he = function(x) numDeriv::hessian(objfunc,x)
 )
 opt_sparsetrust <- optimize_theta(funlist,1.5)
-opt_trust <- optimize_theta(funlist,1.5,control = list(method = "trust"))
-opt_bfgs <- optimize_theta(funlist,1.5,control = list(method = "BFGS"))
+opt_trust <- optimize_theta(funlist,1.5,control = default_control(method = "trust"))
+opt_bfgs <- optimize_theta(funlist,1.5,control = default_control(method = "BFGS"))
 
 # Quadrature with 3, 5, and 7 points using sparse trust region optimization:
 norm_sparse_3 <- normalize_logpost(opt_sparsetrust,3,1)
@@ -85,6 +92,7 @@ norm_bfgs_7 <- normalize_logpost(opt_bfgs,7,1)
 \seealso{
 Other quadrature: 
 \code{\link{aghq}()},
+\code{\link{get_log_normconst}()},
 \code{\link{laplace_approximation}()},
 \code{\link{marginal_laplace_tmb}()},
 \code{\link{marginal_laplace}()},
@@ -94,7 +102,9 @@ Other quadrature:
 \code{\link{print.aghq}()},
 \code{\link{print.laplacesummary}()},
 \code{\link{print.laplace}()},
+\code{\link{print.marginallaplacesummary}()},
 \code{\link{summary.aghq}()},
-\code{\link{summary.laplace}()}
+\code{\link{summary.laplace}()},
+\code{\link{summary.marginallaplace}()}
 }
 \concept{quadrature}

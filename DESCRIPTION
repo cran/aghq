@@ -1,9 +1,9 @@
 Package: aghq
 Type: Package
 Title: Adaptive Gauss Hermite Quadrature for Bayesian Inference
-Version: 0.2.1
+Version: 0.3.0
 Author: Alex Stringer
-Maintainer: Alex Stringer <alex.stringer@mail.utoronto.ca>
+Maintainer: Alex Stringer <alex.stringer@uwaterloo.ca>
 Description: Adaptive Gauss Hermite Quadrature for Bayesian inference.
     The AGHQ method for normalizing posterior distributions
     and making Bayesian inferences based on them. Functions are provided for doing
@@ -11,17 +11,15 @@ Description: Adaptive Gauss Hermite Quadrature for Bayesian inference.
     for making inferences based on the results. 
     See Stringer (2021). "Implementing Adaptive Quadrature for Bayesian Inference: 
     the aghq Package" <arXiv:2101.04468>.
-License: MIT + file LICENSE
+License: GPL (>= 3)
 Encoding: UTF-8
 LazyData: true
-RoxygenNote: 7.1.1
+RoxygenNote: 7.1.2
 Depends: R (>= 3.5.0)
-Imports: methods, mvQuad, Matrix, rlang, polynom
-Suggests: trustOptim, trust, numDeriv, testthat (>= 2.1.0), knitr,
-        rmarkdown
-VignetteBuilder: knitr
+Imports: methods, mvQuad, Matrix, rlang, polynom, splines, numDeriv
+Suggests: trustOptim, trust, testthat (>= 2.1.0), parallel
 Language: en-US
 NeedsCompilation: no
-Packaged: 2021-05-13 14:34:50 UTC; alexstringer
+Packaged: 2021-11-04 23:12:43 UTC; alexstringer
 Repository: CRAN
-Date/Publication: 2021-05-13 15:12:14 UTC
+Date/Publication: 2021-11-05 15:20:05 UTC

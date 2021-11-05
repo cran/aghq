@@ -16,10 +16,10 @@
 #' \itemize{
 #' \item{\code{method}: }{optimization method to use:
 #' \itemize{
-#' \item{'sparse_trust' (default): }{\code{trustOptim::trust.optim} with \code{method = 'sparse'}}
-#' \item{'SR1' (default): }{\code{trustOptim::trust.optim} with \code{method = 'SR1'}}
-#' \item{'trust': }{\code{trust::trust}}
-#' \item{'BFGS': }{\code{optim(...,method = "BFGS")}}
+#' \item{'BFGS' (default): }{\code{optim(...,method = "BFGS")}}
+#' \item{'sparse_trust': }{\code{trustOptim::trust.optim}}
+#' \item{'SR1': }{\code{trustOptim::trust.optim} with \code{method = 'SR1'}}
+#' \item{'sparse': }{\code{trust::trust}}
 #' }
 #' Default is 'sparse_trust'.
 #' }
@@ -34,6 +34,18 @@
 #' derivatives.
 #' \item \code{ndConstruction}: construct a multivariate quadrature rule using a \code{"product"}
 #' rule or a \code{"sparse"} grid? Default \code{"product"}. See \code{?mvQuad::createNIGrid()}.
+#' \item \code{interpolation}: how to interpolate the marginal posteriors. The \code{'auto'} option
+#' (default) chooses for you and should always work well. The \code{'polynomial'}
+#' option uses \code{polynom::poly.calc()} to construct a global polynomial interpolant
+#' and has been observed to be unstable as the number of quadrature points gets larger, which
+#' is obviously a bad thing. Try \code{'spline'} instead, which uses a cubic B-Spline
+#' interpolant from \code{splines::interpSpline()}.
+#' \item{numhessian}: logical, default \code{FALSE}. Replace the \code{ff$he} with a numerically-differentiated
+#' version, by calling \code{numDeriv::jacobian} on \code{ff$gr}. Used mainly for \code{TMB} with the automatic
+#' Laplace approximation, which does not have an automatic Hessian.
+#' \item{onlynormconst}: logical, default \code{FALSE}. Skip everything after the calculation of the log integral,
+#' and just return the numeric value of the log integral. Saves computation time, and most useful in cases
+#' where \code{aghq} is being used as a step in a more complicated procedure.
 #' }
 #'
 #' @examples
@@ -46,9 +58,12 @@
 #'
 default_control <- function(...) {
   out <- list(
-    method = c("sparse_trust","trust","BFGS"),
+    method = c("BFGS","sparse_trust","trust"),
     negate = FALSE,
-    ndConstruction = "product"
+    ndConstruction = "product",
+    interpolation = 'auto',
+    numhessian = FALSE,
+    onlynormconst = FALSE
   )
   specialargs <- list(...)
   for (arg in names(specialargs)) out[arg] <- specialargs[arg]
@@ -69,9 +84,10 @@ default_control <- function(...) {
 #' \itemize{
 #' \item{\code{method}: }{optimization method to use for the \code{theta} optimization:
 #' \itemize{
-#' \item{'sparse_trust' (default): }{\code{trustOptim::trust.optim}}
+#' \item{'BFGS' (default): }{\code{optim(...,method = "BFGS")}}
+#' \item{'sparse_trust': }{\code{trustOptim::trust.optim}}
+#' \item{'SR1': }{\code{trustOptim::trust.optim} with \code{method = 'SR1'}}
 #' \item{'sparse': }{\code{trust::trust}}
-#' \item{'BFGS': }{\code{optim(...,method = "BFGS")}}
 #' }
 #' }
 #' \item{\code{inner_method}: }{optimization method to use for the \code{W} optimization; same
@@ -89,6 +105,18 @@ default_control <- function(...) {
 #' argument for \code{marginal_laplace}; if you are doing a marginal Laplace approximation
 #' using the automatic Laplace approximation provided by \code{TMB}, you should
 #' check out \code{aghq::marginal_laplace_tmb()}.
+#' \item \code{interpolation}: how to interpolate the marginal posteriors. The \code{'auto'} option
+#' (default) chooses for you and should always work well. The \code{'polynomial'}
+#' option uses \code{polynom::poly.calc()} to construct a global polynomial interpolant
+#' and has been observed to be unstable as the number of quadrature points gets larger, which
+#' is obviously a bad thing. Try \code{'spline'} instead, which uses a cubic B-Spline
+#' interpolant from \code{splines::interpSpline()}.
+#' \item{numhessian}: logical, default \code{FALSE}. Replace the \code{ff$he} with a numerically-differentiated
+#' version, by calling \code{numDeriv::jacobian} on \code{ff$gr}. Used mainly for \code{TMB} with the automatic
+#' Laplace approximation, which does not have an automatic Hessian.
+#' \item{onlynormconst}: logical, default \code{FALSE}. Skip everything after the calculation of the log integral,
+#' and just return the numeric value of the log integral. Saves computation time, and most useful in cases
+#' where \code{aghq} is being used as a step in a more complicated procedure.
 #' }
 #'
 #' @examples
@@ -103,16 +131,19 @@ default_control <- function(...) {
 default_control_marglaplace <- function(...) {
   out <- list(
     method = c("BFGS","sparse_trust","trust"),
-    inner_method = c("sparse_trust","trust","BFGS"),
+    inner_method = c("BFGS","sparse_trust","trust"),
     negate = FALSE,
-    ndConstruction = "product"
+    ndConstruction = "product",
+    interpolation = 'auto',
+    numhessian = FALSE,
+    onlynormconst = FALSE
   )
   specialargs <- list(...)
   for (arg in names(specialargs)) out[arg] <- specialargs[arg]
   out
 }
 
-#' Default control arguments for \code{aghq::marginal_laplace()}.
+#' Default control arguments for \code{aghq::marginal_laplace_tmb()}.
 #'
 #' Run \code{default_control_marglaplace()} to print the list of valid control parameters
 #' and their defaults, and run with named arguments to change the defaults.
@@ -126,14 +157,27 @@ default_control_marglaplace <- function(...) {
 #' \itemize{
 #' \item{\code{method}: }{optimization method to use for the \code{theta} optimization:
 #' \itemize{
-#' \item{'sparse_trust' (default): }{\code{trustOptim::trust.optim}}
+#' \item{'BFGS' (default): }{\code{optim(...,method = "BFGS")}}
+#' \item{'sparse_trust': }{\code{trustOptim::trust.optim}}
+#' \item{'SR1': }{\code{trustOptim::trust.optim} with \code{method = 'SR1'}}
 #' \item{'sparse': }{\code{trust::trust}}
-#' \item{'BFGS': }{\code{optim(...,method = "BFGS")}}
 #' }
 #' }
 #' \item \code{negate}: {default \code{TRUE}. Assumes that your \code{TMB} function
 #' template computes the **negated** log-posterior, which it must if you're using \code{TMB}'s automatic
 #' Laplace approximation, which you must be if you're using this function!}.
+#' \item \code{interpolation}: how to interpolate the marginal posteriors. The \code{'auto'} option
+#' (default) chooses for you and should always work well. The \code{'polynomial'}
+#' option uses \code{polynom::poly.calc()} to construct a global polynomial interpolant
+#' and has been observed to be unstable as the number of quadrature points gets larger, which
+#' is obviously a bad thing. Try \code{'spline'} instead, which uses a cubic B-Spline
+#' interpolant from \code{splines::interpSpline()}.
+#' \item{numhessian}: logical, default \code{TRUE}. Replace the \code{ff$he} with a numerically-differentiated
+#' version, by calling \code{numDeriv::jacobian} on \code{ff$gr}. Used mainly for \code{TMB} with the automatic
+#' Laplace approximation, which does not have an automatic Hessian.
+#' \item{onlynormconst}: logical, default \code{FALSE}. Skip everything after the calculation of the log integral,
+#' and just return the numeric value of the log integral. Saves computation time, and most useful in cases
+#' where \code{aghq} is being used as a step in a more complicated procedure.
 #' }
 #'
 #' @examples
@@ -150,11 +194,74 @@ default_control_tmb <- function(...) {
     method = c("BFGS","sparse_trust","trust"),
     negate = TRUE,
     numhessian = TRUE,
-    ndConstruction = 'product'
+    ndConstruction = 'product',
+    interpolation = 'auto',
+    onlynormconst = FALSE
   )
   specialargs <- list(...)
   for (arg in names(specialargs)) out[arg] <- specialargs[arg]
   out
+}
+
+#' Validate a control list
+#'
+#' This function checks that the names and value types for a supplied `control` list
+#' are valid and are unlikely to cause further errors within `aghq` and related functions.
+#' Users should not have to worry about this and should just use `default_control()` and related
+#' constructors.
+#'
+#' @param control A list.
+#' @param type One of `c('aghq','marglapace','tmb')`. The type of control object to validate. Will
+#' basically validate against the arguments required by `aghq`, `marginal_laplace`, and `marginal_laplace_tmb`,
+#' respectively.
+#' @param ... Not used.
+#'
+#' @return Logical, `TRUE` if the list of control arguments is valid, else `FALSE`.
+#'
+#' @details To users reading this: just use `default_control()`, `default_control_marglaplace()`, or `default_control_tmb()`
+#' as appropriate, to ensure that your control arguments are correct. This function just exists to provide more
+#' descriptive error messages in the event that an incompatible list is provided.
+#'
+#' @examples
+#' validate_control(default_control())
+#' validate_control(default_control_marglaplace(),type = "marglaplace")
+#' validate_control(default_control_tmb(),type = "tmb")
+#'
+#' @export
+#'
+validate_control <- function(control,type = c('aghq','marglaplace','tmb'),...) {
+  type <- type[1]
+  if (!(type%in%c('aghq','marglaplace','tmb'))) stop(paste0("Unrecognized type argument. Should be one of 'aghq','marglaplace','tmb'. You provided: ",type))
+
+  # Choose the default args to check against
+  args_to_check <- switch(type,aghq = default_control(),marglaplace = default_control_marglaplace(),tmb = default_control_tmb())
+
+  names_to_check <- names(args_to_check)
+  names_provided <- names(control)
+  if (!setequal(names_to_check,names_provided)) {
+    missing_names <- setdiff(names_to_check,names_provided)
+    extra_names <- setdiff(names_provided,names_to_check)
+    msg <- paste0("Problem with the provided control list. It should have names: ",paste0(names_to_check,collapse = ", "),". Yours has names: ",paste0(names_provided,collapse = ", "),".\n")
+    if (length(missing_names) > 0) msg <- paste0(msg,"You are therefore missing: ",paste0(missing_names,collapse = ", "),".\n")
+    if (length(extra_names) > 0) msg <- paste0(msg,"You have provided extra names: ",paste0(extra_names,collapse=", "),".\n")
+    msg <- paste0(msg,"Try using default_control(), default_control_marglaplace(), or default_control_tmb() to construct your control list.\n")
+    stop(msg)
+  }
+
+  types_to_check <- Map(class,args_to_check)
+  types_provided <- Map(class,control)
+  msg <- paste0("Problem with provided control list. Arguments ",names(types_to_check)," should have types ",types_to_check,".")
+  bad <- FALSE
+
+  for (arg in names(types_to_check)) {
+    if (types_to_check[[arg]] != types_provided[[arg]]) {
+      bad <- TRUE
+      msg <- paste0(msg," Argument ",arg,", has type ",types_provided[[arg]],", but should have type ",types_to_check[[arg]])
+    }
+  }
+  if (bad) stop(msg)
+
+  TRUE
 }
 
 # Logsumexp
@@ -175,5 +282,8 @@ logdiffexp <- function(a,b) {
   # computes log(exp(a) - exp(b)) where a > b
   if (length(b) == 0) return(a)
   if (b > a) stop("Error: negative weights outweigh the positive weights for this quadrature rule. This would result in negative density estimates and is obviously incorrect.\n")
-  b + log(exp(a-b) - 1)
+  # b + log(exp(a-b) - 1)
+  b + log(expm1(a-b))
 }
+
+
