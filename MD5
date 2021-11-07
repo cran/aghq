@@ -1,6 +1,6 @@
-1333c535ff8f93fb5041486913c99e17 *DESCRIPTION
+ff445a4c278c5167608f83f38770bf79 *DESCRIPTION
 534ab37dd3f4dec027f1d2d9b258d468 *NAMESPACE
-63f3a5034787483b9fe9cd09cfea774f *NEWS.md
+c910fbde22a653d52dfe6351639fcc30 *NEWS.md
 b48315944bcacd04569d4f82e8eafde6 *R/00-misc-support-functions.R
 c5c1c0db64a2aa8e067e2cc5e8c97431 *R/01-optimization.R
 9ff319908b014e80ac72261b0b9dfc65 *R/02-normalization.R
@@ -47,5 +47,5 @@ acb87648765ce610f51f37aeed3cdfca *man/summary.laplace.Rd
 bcf43e202c67ea6603a1d924eba516c4 *tests/testthat/setup-01-optimization.R
 376c6960cf47d17275012717e19e49c0 *tests/testthat/test-01-optimization.R
 b6ad3f10934c8c63c05bd9801e271f25 *tests/testthat/test-02-normalization.R
-84518cd385dd35d8d3f1b8b222a74c5d *tests/testthat/test-03-summary-statistics.R
+3b4d07597c30122a7e7b8386e55fbaf3 *tests/testthat/test-03-summary-statistics.R
 bb91178d044b90e1d6b4d3ab5c7b6d5b *tests/testthat/test-04-aghq.R
