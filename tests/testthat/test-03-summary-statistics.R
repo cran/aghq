@@ -36,6 +36,61 @@ test_that("Marginal posteriors computed correctly",{
   expect_equal(sum(exp(margpost_3d_2$logmargpost) * margpost_3d_2$w),1)
   expect_equal(sum(exp(margpost_3d_3$logmargpost) * margpost_3d_3$w),1)
 
+  # New marginal posteriors
+  expect_is(margpost_1d_1_correct,"data.frame")
+  expect_is(margpost_2d_1_correct,"data.frame")
+  expect_is(margpost_2d_2_correct,"data.frame")
+  expect_is(margpost_3d_1_correct,"data.frame")
+  expect_is(margpost_3d_2_correct,"data.frame")
+  expect_is(margpost_3d_3_correct,"data.frame")
+
+
+  expect_equal(colnames(margpost_1d_1_correct),c("theta1","logmargpost"))
+  expect_equal(colnames(margpost_2d_1_correct),c("theta1","logmargpost"))
+  expect_equal(colnames(margpost_2d_2_correct),c("theta2","logmargpost"))
+  expect_equal(colnames(margpost_3d_1_correct),c("theta1","logmargpost"))
+  expect_equal(colnames(margpost_3d_2_correct),c("theta2","logmargpost"))
+  expect_equal(colnames(margpost_3d_3_correct),c("theta3","logmargpost"))
+
+  expect_equal(nrow(margpost_1d_1_correct),3)
+  expect_equal(nrow(margpost_2d_1_correct),3)
+  expect_equal(nrow(margpost_2d_2_correct),3)
+  expect_equal(nrow(margpost_2d_2_k7_correct),7)
+  expect_equal(nrow(margpost_3d_1_correct),3)
+  expect_equal(nrow(margpost_3d_2_correct),3)
+  expect_equal(nrow(margpost_3d_2_correct),3)
+
+
+  # Integration
+  expect_lt(sum(abs(range(compute_pdf_and_cdf(margpost_1d_1_correct)$cdf) - c(0,1))),1e-03)
+  expect_lt(sum(abs(range(compute_pdf_and_cdf(margpost_2d_1_correct)$cdf) - c(0,1))),1e-03)
+  expect_lt(sum(abs(range(compute_pdf_and_cdf(margpost_2d_2_correct)$cdf) - c(0,1))),1e-03)
+  expect_lt(sum(abs(range(compute_pdf_and_cdf(margpost_2d_2_k7_correct)$cdf) - c(0,1))),1e-03)
+  expect_lt(sum(abs(range(compute_pdf_and_cdf(margpost_3d_1_correct)$cdf) - c(0,1))),1e-03)
+  expect_lt(sum(abs(range(compute_pdf_and_cdf(margpost_3d_2_correct)$cdf) - c(0,1))),1e-03)
+  expect_lt(sum(abs(range(compute_pdf_and_cdf(margpost_3d_3_correct)$cdf) - c(0,1))),1e-03)
+
+  # Corrections
+  expect_equal(colnames(margpost_thequadrature_original[[1]]),c("theta1","logmargpost","w"))
+  expect_equal(colnames(margpost_thequadrature_original[[2]]),c("theta2","logmargpost","w"))
+  expect_equal(colnames(margpost_thequadrature_correct[[1]]),c("theta1","logmargpost"))
+  expect_equal(colnames(margpost_thequadrature_correct[[2]]),c("theta2","logmargpost"))
+  expect_equal(nrow(margpost_thequadrature_original[[1]]),3)
+  expect_equal(nrow(margpost_thequadrature_original[[2]]),3)
+  expect_equal(nrow(margpost_thequadrature_correct[[1]]),3)
+  expect_equal(nrow(margpost_thequadrature_correct[[2]]),3)
+  expect_is(margpost_thequadrature_original[[1]],'data.frame')
+  expect_is(margpost_thequadrature_original[[2]],'data.frame')
+  expect_is(margpost_thequadrature_correct[[1]],'data.frame')
+  expect_is(margpost_thequadrature_correct[[2]],'data.frame')
+  expect_lt(sum(abs(range(compute_pdf_and_cdf(margpost_thequadrature_original[[1]])$cdf) - c(0,1))),1e-03)
+  expect_lt(sum(abs(range(compute_pdf_and_cdf(margpost_thequadrature_original[[2]])$cdf) - c(0,1))),1e-03)
+  expect_lt(sum(abs(range(compute_pdf_and_cdf(margpost_thequadrature_correct[[1]])$cdf) - c(0,1))),1e-03)
+  expect_lt(sum(abs(range(compute_pdf_and_cdf(margpost_thequadrature_correct[[2]])$cdf) - c(0,1))),1e-03)
+
+
+
+
   # Moments
   expect_equal(aghqnormconst1d,1)
   expect_equal(aghqnormconst2d,1)
@@ -69,6 +124,49 @@ test_that("Marginal posteriors computed correctly",{
   expect_lt(abs(aghqmean2d - truemean2d)[1],.1)
   expect_lt(abs(aghqmean2d - truemean2d)[2],.1)
 
+  # Updated interface for moments
+  expect_equal(compute_moment(thequadrature),1)
+  expect_equal(compute_moment(thequadrature,method='correct'),1)
+  expect_equal(compute_moment(thequadrature,ff = function(theta) rep(1,2)),rep(1,2))
+  expect_equal(compute_moment(thequadrature,ff = function(theta) rep(1,10)),rep(1,10))
+  expect_equal(compute_moment(thequadrature,ff = function(theta) 1:2),1:2)
+  expect_equal(compute_moment(thequadrature,ff = function(theta) 1:10),1:10)
+
+  expect_equal(compute_moment(thequadrature,ff = function(theta) rep(1,2),method='correct'),rep(1,2))
+  expect_equal(compute_moment(thequadrature,ff = function(theta) rep(1,10),method='correct'),rep(1,10))
+  expect_equal(compute_moment(thequadrature,ff = function(theta) 1:2,method='correct'),1:2)
+  expect_equal(compute_moment(thequadrature,ff = function(theta) 1:10,method='correct'),1:10)
+
+  expect_equal(compute_moment(thequadrature,gg = make_moment_function(function(x) log(2))),2)
+  expect_equal(compute_moment(thequadrature,ff=NULL,gg = make_moment_function(function(x) log(2))),2)
+  expect_equal(compute_moment(thequadrature,gg = make_moment_function(function(x) log(2)),method='correct'),2)
+  expect_equal(compute_moment(thequadrature,ff=NULL,gg = make_moment_function(function(x) log(2)),method='correct'),2)
+  expect_equal(compute_moment(thequadrature,gg = make_moment_function(function(x) 0),method='correct'),1)
+  expect_equal(compute_moment(thequadrature,gg = make_moment_function(function(theta) log(rep(1,2)))),rep(1,2))
+  expect_equal(compute_moment(thequadrature,gg = make_moment_function(function(theta) log(rep(1,10)))),rep(1,10))
+  expect_equal(compute_moment(thequadrature,gg = make_moment_function(function(x) log(2)),method='correct'),2)
+
+  expect_lt(abs(aghqexpmean1d_correct - trueexpmean1d),1e-05)
+  expect_lt(abs(aghqexpmean2d_correct - trueexpmean2d)[1],1e-04)
+  expect_lt(abs(aghqexpmean2d_correct - trueexpmean2d)[2],1e-04)
+
+  expect_lt(abs(aghqexpmean3d_correct - trueexpmean3d)[1],1e-04)
+  expect_lt(abs(aghqexpmean3d_correct - trueexpmean3d)[2],1e-04)
+  expect_lt(abs(aghqexpmean3d_correct - trueexpmean3d)[3],1e-04)
+
+  expect_lt(abs(aghqexpmean1d_correct2_1 - trueexpmean1d),1e-05)
+  expect_lt(abs(aghqexpmean2d_correct2_1 - trueexpmean2d[1]),1e-05)
+  expect_lt(abs(aghqexpmean2d_correct2_2 - trueexpmean2d[2]),1e-05)
+  expect_lt(abs(aghqexpmean3d_correct2_1 - trueexpmean3d[1]),1e-05)
+  expect_lt(abs(aghqexpmean3d_correct2_2 - trueexpmean3d[2]),1e-05)
+  expect_lt(abs(aghqexpmean3d_correct2_3 - trueexpmean3d[3]),1e-05)
+
+
+  expect_warning(compute_moment(thequadrature$normalized_posterior,method='correct'))
+
+
+
+
   # Interpolation
   expect_is(margpostinterp,"function")
   expect_is(margpostinterp_2,"function")
@@ -84,7 +182,7 @@ test_that("Marginal posteriors computed correctly",{
 
   # PDF and CDF
   expect_is(thepdfandcdf,"data.frame")
-  expect_equal(colnames(thepdfandcdf),c("theta","pdf","cdf"))
+  expect_equal(colnames(thepdfandcdf),pdfandcdfnames)
   expect_true(all(thepdfandcdf$pdf > 0))
   expect_true(all(thepdfandcdf$cdf >= 0))
   expect_equal(thepdfandcdf$cdf[1],0)
@@ -93,7 +191,7 @@ test_that("Marginal posteriors computed correctly",{
 
   # PDF and CDF with transformation
   expect_is(pdfwithtrans,"data.frame")
-  expect_equal(colnames(pdfwithtrans),c("theta","pdf","cdf","transparam","pdf_transparam"))
+  expect_equal(colnames(pdfwithtrans),pdfandcdfnames)
   expect_true(all(pdfwithtrans$pdf > 0))
   expect_true(all(pdfwithtrans$pdf_transparam > 0))
   expect_true(all(pdfwithtrans$cdf >= 0))
@@ -102,7 +200,7 @@ test_that("Marginal posteriors computed correctly",{
 
   # 3d
   expect_is(thepdfandcdf3d_1,"data.frame")
-  expect_equal(colnames(thepdfandcdf3d_1),c("theta","pdf","cdf","transparam","pdf_transparam"))
+  expect_equal(colnames(thepdfandcdf3d_1),pdfandcdfnames)
   expect_true(all(thepdfandcdf3d_1$pdf > 0))
   expect_true(all(thepdfandcdf3d_1$pdf_transparam > 0))
   expect_true(all(thepdfandcdf3d_1$cdf >= 0))
@@ -110,7 +208,7 @@ test_that("Marginal posteriors computed correctly",{
   expect_equal(round(thepdfandcdf3d_1$cdf[1000],2),1)
 
   expect_is(thepdfandcdf3d_2,"data.frame")
-  expect_equal(colnames(thepdfandcdf3d_2),c("theta","pdf","cdf","transparam","pdf_transparam"))
+  expect_equal(colnames(thepdfandcdf3d_2),pdfandcdfnames)
   expect_true(all(thepdfandcdf3d_2$pdf > 0))
   expect_true(all(thepdfandcdf3d_2$pdf_transparam > 0))
   expect_true(all(thepdfandcdf3d_2$cdf >= 0))
@@ -118,7 +216,7 @@ test_that("Marginal posteriors computed correctly",{
   expect_equal(round(thepdfandcdf3d_2$cdf[1000],2),1)
 
   expect_is(thepdfandcdf3d_3,"data.frame")
-  expect_equal(colnames(thepdfandcdf3d_3),c("theta","pdf","cdf","transparam","pdf_transparam"))
+  expect_equal(colnames(thepdfandcdf3d_3),pdfandcdfnames)
   expect_true(all(thepdfandcdf3d_3$pdf > 0))
   expect_true(all(thepdfandcdf3d_3$pdf_transparam > 0))
   expect_true(all(thepdfandcdf3d_3$cdf >= 0))
@@ -170,5 +268,98 @@ test_that("Marginal posteriors computed correctly",{
   expect_true(all(themargsamps$samps == themargsamps_parallel$samps))
   expect_true(all(themargsamps$theta == themargsamps_parallel$theta))
   expect_true(all(themargsamps$thetasamples[[1]] == themargsamps_parallel$thetasamples[[1]]))
+
+  # Transformations
+  expect_equal(names(trans2),transnames)
+  expect_equal(names(trans3),transnames)
+  expect_equal(names(trans4),transnames)
+  expect_is(trans2,"aghqtrans")
+  expect_is(trans3,"aghqtrans")
+  expect_is(trans4,"aghqtrans")
+
+  expect_equal(trans1$totheta(tt),trans2$totheta(tt))
+  expect_equal(trans2$totheta(tt),trans3$totheta(tt))
+  expect_equal(trans3$totheta(tt),trans4$totheta(tt))
+  expect_equal(trans1$fromtheta(tt),trans2$fromtheta(tt))
+  expect_equal(trans2$fromtheta(tt),trans3$fromtheta(tt))
+  expect_equal(trans3$fromtheta(tt),trans4$fromtheta(tt))
+  expect_equal(trans2$jacobian(tt),trans3$jacobian(tt))
+  expect_equal(trans3$jacobian(tt),trans4$jacobian(tt))
+
+  expect_true(validate_transformation(default_transformation()))
+  expect_true(validate_transformation(trans1))
+  expect_true(validate_transformation(trans2))
+  expect_true(validate_transformation(trans3))
+  expect_true(validate_transformation(trans4))
+  expect_error(validate_transformation(list(foo = 'bar')))
+  expect_error(validate_transformation(t3,checkinverse = checkvals))
+
+  # Moments
+  expect_equal(names(mom1),momnames)
+  expect_equal(names(mom2),momnames)
+  expect_equal(names(mom3),momnames)
+  expect_is(mom1,'aghqmoment')
+  expect_is(mom2,'aghqmoment')
+  expect_is(mom3,'aghqmoment')
+  expect_true(validate_moment(mom1))
+  expect_true(validate_moment(mom2))
+  expect_true(validate_moment(mom3))
+  expect_true(validate_moment(exp))
+  expect_true(validate_moment('exp'))
+  expect_true(validate_moment(list(fn=function(x) x,gr=function(x) 1,he = function(x) 0)))
+
+  expect_error(make_moment_function(mombad1))
+  expect_error(make_moment_function(mombad2))
+  expect_error(validate_moment(mombad1))
+  expect_error(validate_moment(mombad2))
+  expect_error(validate_moment(mombad3,checkpositive = c(-1,0,1)))
+  expect_error(validate_moment(NULL))
+
+  expect_error(compute_moment(norm_sparse_2d_7,method = 'foo'))
+  expect_warning(compute_moment(norm_sparse_2d_7,method = 'correct'))
+  expect_error(compute_moment(norm_sparse_2d_7,method = 'foo'))
+
+  # Shifting/integer moments
+  expect_equal(get_shift(ggmomnum_manual),20)
+  expect_gt(get_shift(ggmomnum_auto),0)
+  expect_lt(abs(nummom_list1 - truemoment),1e-04)
+  expect_lt(abs(nummom_aghq1 - truemoment),1e-04)
+  expect_equal(nummom_aghq_central1,0)
+  expect_equal(nummom_aghq_correct_central1,0)
+  expect_lt(abs(nummom_aghq_central2 - truesecondcentralmoment),1e-04)
+  expect_equal(nummom_aghq_central2,nummom_aghq2 - nummom_aghq1^2)
+
+  expect_lt(abs(nummom_aghq_correct1 - truemoment),1e-05)
+  expect_lt(abs(nummom_aghq_correct1 - truemoment),abs(nummom_aghq1 - truemoment)) # "correct" should be better
+  expect_lt(abs(nummom_aghq_correct_central2 - truesecondcentralmoment),1e-05)
+  expect_lt(abs(nummom_aghq_correct_central2 - truesecondcentralmoment),abs(nummom_aghq_central2 - truesecondcentralmoment))
+  expect_lt(abs(nummom_aghq_correct_central2- (nummom_aghq_correct2 - nummom_aghq_correct1^2)),1e-05)
+  expect_lt(abs(nummom_aghq_correct2 - truesecondrawmoment),1e-05)
+
+  expect_equal(get_shift(ggmomshift2),0)
+  expect_equal(get_shift(ggmomshift2_withcentre),1)
+  expect_lt(abs(nummom_aghq_correct1_2 - truemoment2),1e-12)
+  expect_lt(abs(nummom_aghq_correct2_2 - truesecondrawmoment2),1e-10)
+  expect_equal(nummom_aghq_correct_central1_2,0)
+  expect_lt(abs(nummom_aghq_correct_central2_2 - truesecondcentralmoment2),1e-12)
+
+  expect_lt(abs(nummom_aghq_correct1_3 - truemoment3),1e-06)
+  expect_lt(abs(nummom_aghq_correct2_3 - truesecondrawmoment3),1e-05)
+  expect_equal(nummom_aghq_correct_central1_3,0)
+  expect_lt(abs(nummom_aghq_correct_central2_3 - truesecondcentralmoment3),1e-05)
+
+  expect_lt(abs(nummom_aghq_correct1_4 - truemoment4),1e-10)
+  expect_lt(abs(nummom_aghq_correct2_4 - truesecondrawmoment4),1e-06)
+  expect_equal(nummom_aghq_correct_central1_4,0)
+  expect_lt(abs(nummom_aghq_correct_central2_4 - truesecondcentralmoment4),1e-11)
+
+  expect_lt(abs(nummom_aghq_correct1_2d[1] - truemoment_2d[1]),1e-06)
+  expect_lt(abs(nummom_aghq_correct1_2d[2] - truemoment_2d[2]),1e-06)
+  expect_lt(abs(nummom_aghq_correct2_2d[1] - truesecondrawmoment_2d[1]),1e-06)
+  expect_lt(abs(nummom_aghq_correct2_2d[2] - truesecondrawmoment_2d[2]),1e-05)
+  expect_equal(nummom_aghq_correct_central1_2d,c(0,0))
+  expect_lt(abs(nummom_aghq_correct_central2_2d[1] - truesecondcentralmoment_2d[1]),1e-05)
+  expect_lt(abs(nummom_aghq_correct_central2_2d[2] - truesecondcentralmoment_2d[2]),1e-06)
+
 })
 

@@ -2,24 +2,49 @@
 % Please edit documentation in R/03-summary-statistics.R
 \name{marginal_posterior}
 \alias{marginal_posterior}
+\alias{marginal_posterior.aghq}
+\alias{marginal_posterior.list}
 \title{Marginal Posteriors}
 \usage{
-marginal_posterior(
+marginal_posterior(...)
+
+\method{marginal_posterior}{aghq}(
+  quad,
+  j,
+  qq = NULL,
+  method = c("auto", "reuse", "correct"),
+  ...
+)
+
+\method{marginal_posterior}{list}(
   optresults,
   k,
   j,
   basegrid = NULL,
-  ndConstruction = "product"
+  ndConstruction = "product",
+  ...
 )
 }
 \arguments{
+\item{...}{Additional arguments to be passed to \code{optresults$ff}, see \code{?optimize_theta}.}
+
+\item{quad}{Object returned by \code{aghq::aghq}.}
+
+\item{j}{Integer between 1 and the dimension of the parameter space. Which
+index of the parameter vector to compute the marginal posterior for.}
+
+\item{qq}{Numeric vector of length \code{>=1} giving the points at which to evaluate the marginal posterior.
+The default, \code{NULL}, chooses these points in a 'clever' way, see Details.}
+
+\item{method}{Method for computing the quadrature points used to approximate moment.
+One of 'reuse' (default) or 'correct'. See details.
+The default SHOULD be 'correct'; it is currently set to 'reuse' to maintain compatibility of
+results with previous versions. This will be switched in a future major release.}
+
 \item{optresults}{The results of calling \code{aghq::optimize_theta()}: see return value of that function.}
 
 \item{k}{Integer, the number of quadrature points to use. I suggest at least 3. k = 1 corresponds to a Laplace
 approximation.}
-
-\item{j}{Integer between 1 and the dimension of the parameter space. Which
-index of the parameter vector to compute the marginal posterior for.}
 
 \item{basegrid}{Optional. Provide an object of class \code{NIGrid} from the \code{mvQuad}
 package, representing the base quadrature rule that will be adapted. This is only
@@ -40,6 +65,22 @@ for theta_j evaluated at the original quadrature points. Has columns
 \description{
 Compute the marginal posterior for a given parameter using AGHQ. This function is
 mostly called within \code{aghq()}.
+}
+\details{
+If \code{qq=NULL}, then it is set to the unique values in an adapted GHQ grid computed
+assuming that \code{j=1} (there is nothing special about this procedure, it's just a way to provide
+an apparently sensible default).
+
+If \code{method='reuse'}, then the parameter vector is reordered so \code{j=1}, and the
+approximate marginal is computed by first computing the whole AGHQ grid, then summing over the other
+indices. This is an outdated method that does not have any theory pertaining to it, and is included for
+backwards compatibility. It does not use \code{qq} if supplied.
+
+If \code{method='correct'} then the theoretically-justified approximation from Section 2.4 of the 'Stochastic Convergence Rates...'
+paper is returned.
+
+\code{method='auto'} currently chooses \code{'reuse'} for backwards compatibility, but this will be
+changed in a future release.
 }
 \examples{
 ## A 2d example ##
@@ -78,7 +119,6 @@ marginal_posterior(opt_sparsetrust_2d,7,2)
 }
 \seealso{
 Other summaries: 
-\code{\link{compute_moment}()},
 \code{\link{compute_pdf_and_cdf}()},
 \code{\link{compute_quantiles}()},
 \code{\link{interpolate_marginal_posterior}()}

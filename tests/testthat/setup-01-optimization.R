@@ -50,6 +50,9 @@ pdfwithtrans <- compute_pdf_and_cdf(
 
 
 
+
+
+
 ## A 2d example ##
 logfteta2d <- function(eta,y) {
   # eta is now (eta1,eta2)
@@ -122,6 +125,7 @@ truesd2d <- c(sqrt(1+sum(y1)) / (1 + length(y1)),sqrt(1+sum(y2)) / (1 + length(y
 aghqnormconst1d <- compute_moment(norm_sparse_7)
 aghqnormconst2d <- compute_moment(norm_sparse_2d_7)
 
+
 aghqmean1d <- compute_moment(norm_sparse_7,function(x) x)
 aghqmean2d <- compute_moment(norm_sparse_2d_7,function(x) x)
 
@@ -132,11 +136,15 @@ aghqexpsd1d <- sqrt(compute_moment(norm_sparse_7,function(x) (exp(x) - trueexpme
 aghqexpsd2d_1 <- sqrt(compute_moment(norm_sparse_2d_7,function(x) (exp(x) - trueexpmean2d[1])^2))[1]
 aghqexpsd2d_2 <- sqrt(compute_moment(norm_sparse_2d_7,function(x) (exp(x) - trueexpmean2d[2])^2))[2]
 
+
+
+
 # Interpolation
 margpostinterp <- interpolate_marginal_posterior(margpost_2d_1)
 margpostinterp_2 <- interpolate_marginal_posterior(margpost_2d_2)
 
 # pdf and cdf
+pdfandcdfnames <- c("theta","pdf","cdf","transparam","pdf_transparam")
 thepdfandcdf <- compute_pdf_and_cdf(margpost_2d_1)
 
 # quantiles
@@ -290,6 +298,39 @@ aghqexpmean3d <- compute_moment(norm_sparse_3d_7,function(x) exp(x))
 aghqexpsd3d_1 <- sqrt(compute_moment(norm_sparse_3d_7,function(x) (exp(x) - trueexpmean3d[1])^2))[1]
 aghqexpsd3d_2 <- sqrt(compute_moment(norm_sparse_3d_7,function(x) (exp(x) - trueexpmean3d[2])^2))[2]
 aghqexpsd3d_3 <- sqrt(compute_moment(norm_sparse_3d_7,function(x) (exp(x) - trueexpmean3d[3])^2))[3]
+
+momquad <- aghq(funlist,9,0)
+momquad2 <- aghq(funlist2d,9,c(0,0))
+momquad3 <- aghq(funlist3d,9,c(0,0,0))
+
+aghqexpmean1d_correct <- compute_moment(momquad,function(x) exp(x),method='correct')
+aghqexpmean2d_correct <- compute_moment(momquad2,function(x) exp(x),method='correct')
+aghqexpmean3d_correct <- compute_moment(momquad3,function(x) exp(x),method='correct')
+aghqexpmean1d_correct2_1 <- compute_moment(momquad,gg = make_moment_function(function(x) x,method='correct'))
+aghqexpmean2d_correct2_1 <- compute_moment(momquad2,gg = make_moment_function(function(x) x[1]),method='correct')
+aghqexpmean2d_correct2_2 <- compute_moment(momquad2,gg = make_moment_function(function(x) x[2]),method='correct')
+aghqexpmean3d_correct2_1 <- compute_moment(momquad3,gg = make_moment_function(function(x) x[1]),method='correct')
+aghqexpmean3d_correct2_2 <- compute_moment(momquad3,gg = make_moment_function(function(x) x[2]),method='correct')
+aghqexpmean3d_correct2_3 <- compute_moment(momquad3,gg = make_moment_function(function(x) x[3]),method='correct')
+
+margquad <- aghq(funlist,3,0)
+margquad2 <- aghq(funlist2d,3,c(0,0))
+margquad2_k7 <- aghq(funlist2d,7,c(0,0))
+margquad3 <- aghq(funlist3d,3,c(0,0,0))
+
+margpost_1d_1_correct <- marginal_posterior(margquad,1,method='correct')
+margpost_2d_1_correct <- marginal_posterior(margquad2,1,method='correct')
+margpost_2d_2_correct <- marginal_posterior(margquad2,2,method='correct')
+margpost_2d_2_k7_correct <- marginal_posterior(margquad2_k7,2,method='correct')
+margpost_3d_1_correct <- marginal_posterior(margquad3,1,method='correct')
+margpost_3d_2_correct <- marginal_posterior(margquad3,2,method='correct')
+margpost_3d_3_correct <- marginal_posterior(margquad3,3,method='correct')
+
+# check the correction of marginals
+margpost_thequadrature_original <- thequadrature$marginals
+thequadrature_correct <- correct_marginals(thequadrature)
+margpost_thequadrature_correct <- thequadrature_correct$marginals
+
 
 # Interpolation
 margpostinterp3d_1 <- interpolate_marginal_posterior(margpost_3d_1)
@@ -472,4 +513,202 @@ mlsumm2 <- summary(themarginallaplace3d_1)
 mlsumm3 <- summary(themarginallaplace,M=100)
 mlsumm4 <- summary(themarginallaplace3d_1,max_print=1)
 
+## Transformations ##
+transnames <- c("totheta","fromtheta","jacobian")
+tt <- exp(rnorm(10))
+trans1 <- list(totheta = log,fromtheta = exp)
+trans2 <- make_transformation(log,exp)
+trans3 <- make_transformation("log","exp")
+trans4 <- make_transformation(trans1)
+
+t3 <- make_transformation(log,log)
+checkvals <- exp(exp(rnorm(10)))
+
+# thepdfandcdf_trans1 <- compute_pdf_and_cdf(margpost_3d_1,transformation = trans1)
+# thepdfandcdf_trans2 <- compute_pdf_and_cdf(margpost_3d_1,transformation = trans2)
+# thepdfandcdf_trans3 <- compute_pdf_and_cdf(margpost_3d_1,transformation = trans3)
+
+
+## Moments ##
+momnames <- c("fn","gr","he")
+mom1 <- make_moment_function(exp)
+mom2 <- make_moment_function('exp')
+mom3 <- make_moment_function(list(fn=function(x) x,gr=function(x) 1,he = function(x) 0))
+mombad1 <- list(exp,exp,exp) # No names
+mombad2 <- list('exp','exp','exp') # List of not functions
+mombad3 <- make_moment_function(function(x) NA)
+
+## New integer moments ##
+set.seed(4378)
+n <- 10
+lambda <- 2
+y <- rpois(n,lambda)
+# POSITIVE mode, with some negative quad points
+momobjfunc1 <- function(eta) {
+  sum(y) * eta - (length(y) + 1) * exp(eta) - sum(lgamma(y+1)) + eta
+}
+momfunlist1 <- list(
+  fn = momobjfunc1,
+  gr = function(x) numDeriv::grad(momobjfunc1,x),
+  he = function(x) numDeriv::hessian(momobjfunc1,x)
+)
+momshiftquad1 <- aghq(momfunlist1,7,0)
+truemoment <- digamma(sum(y) + 1) - log(length(y) + 1)
+truesecondcentralmoment <- trigamma(sum(y)+1)
+truesecondrawmoment <- truesecondcentralmoment + truemoment^2
+# Make numeric moment function
+ggmomnum_manual <- make_numeric_moment_function(1,1,momshiftquad1,shift = 20)
+ggmomnum_auto <- make_numeric_moment_function(1,1,momshiftquad1)
+
+# Old way
+nummom_list1 <- compute_moment(momshiftquad1$normalized_posterior,nn=1)
+nummom_aghq1 <- compute_moment(momshiftquad1,nn=1) # Should call compute_moment.list
+nummom_aghq2 <- compute_moment(momshiftquad1,nn=2)
+# Central
+nummom_aghq_central1 <- compute_moment(momshiftquad1,nn=1,type='central')
+nummom_aghq_central2 <- compute_moment(momshiftquad1,nn=2,type='central')
+nummom_aghq2 - nummom_aghq1^2
+# New way
+nummom_aghq_correct1 <- compute_moment(momshiftquad1,nn=1,method = 'correct')
+nummom_aghq_correct2 <- compute_moment(momshiftquad1,nn=2,method = 'correct')
+nummom_aghq_correct_central1 <- compute_moment(momshiftquad1,nn=1,method = 'correct',type='central')
+nummom_aghq_correct_central2 <- compute_moment(momshiftquad1,nn=2,method = 'correct',type='central')
+
+# POSITIVE mode, with no negative quad points
+# There should be NO shift
+set.seed(4378)
+n <- 100
+lambda <- 20
+y <- rpois(n,lambda)
+
+momobjfunc2 <- function(eta) {
+  sum(y) * eta - (length(y) + 1) * exp(eta) - sum(lgamma(y+1)) + eta
+}
+momfunlist2 <- list(
+  fn = momobjfunc2,
+  gr = function(x) numDeriv::grad(momobjfunc2,x),
+  he = function(x) numDeriv::hessian(momobjfunc2,x)
+)
+momshiftquad2 <- aghq(momfunlist2,7,0)
+truemoment2 <- digamma(sum(y) + 1) - log(length(y) + 1)
+truesecondcentralmoment2 <- trigamma(sum(y)+1)
+truesecondrawmoment2 <- truesecondcentralmoment2 + truemoment2^2
+
+# Test that the moment functions are created without shift
+ggmomshift2 <- make_numeric_moment_function(1,1,momshiftquad2,0,NULL)
+ggmomshift2_withcentre <- make_numeric_moment_function(1,1,momshiftquad2,1,NULL)
+
+
+# Moments
+nummom_aghq_correct1_2 <- compute_moment(momshiftquad2,nn=1,method = 'correct')
+nummom_aghq_correct2_2 <- compute_moment(momshiftquad2,nn=2,method = 'correct')
+nummom_aghq_correct_central1_2 <- compute_moment(momshiftquad2,nn=1,method = 'correct',type='central')
+nummom_aghq_correct_central2_2 <- compute_moment(momshiftquad2,nn=2,method = 'correct',type='central')
+
+# NEGATIVE mode, with some negative quad points
+set.seed(4378)
+n <- 10
+lambda <- 2
+y <- rpois(n,lambda)
+
+momobjfunc3 <- function(eta) {
+  eta <- -1*eta
+  sum(y) * eta - (length(y) + 1) * exp(eta) - sum(lgamma(y+1)) + eta
+}
+momfunlist3 <- list(
+  fn = momobjfunc3,
+  gr = function(x) numDeriv::grad(momobjfunc3,x),
+  he = function(x) numDeriv::hessian(momobjfunc3,x)
+)
+momshiftquad3 <- aghq(momfunlist3,7,0)
+truemoment3 <- -1*(digamma(sum(y) + 1) - log(length(y) + 1))
+truesecondcentralmoment3 <- trigamma(sum(y)+1) # Still positive
+truesecondrawmoment3 <- truesecondcentralmoment3 + truemoment3^2
+
+# Moments
+nummom_aghq_correct1_3 <- compute_moment(momshiftquad3,nn=1,method = 'correct')
+nummom_aghq_correct2_3 <- compute_moment(momshiftquad3,nn=2,method = 'correct')
+nummom_aghq_correct_central1_3 <- compute_moment(momshiftquad3,nn=1,method = 'correct',type='central')
+nummom_aghq_correct_central2_3 <- compute_moment(momshiftquad3,nn=2,method = 'correct',type='central')
+
+# EXTREMELY NEGATIVE mode, with no positive quad points
+# This is a test for accuracy.
+set.seed(4378)
+n <- 100
+lambda <- 10
+y <- rpois(n,lambda)
+
+momobjfunc4 <- function(eta) {
+  eta <- -1*eta
+  sum(y) * eta - (length(y) + 1) * exp(eta) - sum(lgamma(y+1)) + eta
+}
+momfunlist4 <- list(
+  fn = momobjfunc4,
+  gr = function(x) numDeriv::grad(momobjfunc4,x),
+  he = function(x) numDeriv::hessian(momobjfunc4,x)
+)
+momshiftquad4 <- aghq(momfunlist4,7,0)
+truemoment4 <- -1*(digamma(sum(y) + 1) - log(length(y) + 1))
+truesecondcentralmoment4 <- trigamma(sum(y)+1) # Still positive
+truesecondrawmoment4 <- truesecondcentralmoment4 + truemoment4^2
+
+# Moments
+nummom_aghq_correct1_4 <- compute_moment(momshiftquad4,nn=1,method = 'correct')
+nummom_aghq_correct2_4 <- compute_moment(momshiftquad4,nn=2,method = 'correct')
+nummom_aghq_correct_central1_4 <- compute_moment(momshiftquad4,nn=1,method = 'correct',type='central')
+nummom_aghq_correct_central2_4 <- compute_moment(momshiftquad4,nn=2,method = 'correct',type='central')
+
+## Indexing of moments, 2d example. ##
+logfteta2d <- function(eta,y) {
+  n <- length(y)
+  n1 <- ceiling(n/2)
+  n2 <- floor(n/2)
+  y1 <- y[1:n1]
+  y2 <- y[(n1+1):(n1+n2)]
+  eta1 <- eta[1]
+  eta2 <- eta[2]
+  sum(y1) * eta1 - (length(y1) + 1) * exp(eta1) - sum(lgamma(y1+1)) + eta1 +
+    sum(y2) * eta2 - (length(y2) + 1) * exp(eta2) - sum(lgamma(y2+1)) + eta2
+}
+set.seed(57380)
+n11 <- 10
+n22 <- 10
+lambda11 <- 5
+lambda22 <- 5
+nn <- n11+n22
+y11 <- rpois(n11,5)
+y22 <- rpois(n22,5)
+
+truemoment_2d <- digamma(c(sum(y11) + 1,sum(y22) + 1)) - log(c(n11 + 1,n22+1))
+truesecondcentralmoment_2d <- trigamma(c(sum(y11)+1,sum(y22) + 1)) # Still positive
+truesecondrawmoment_2d <- truesecondcentralmoment_2d + truemoment_2d^2
+
+momobjfunc_2d <- function(x) logfteta2d(x,c(y11,y22))
+momfunlist_2d <- list(
+  fn = momobjfunc_2d,
+  gr = function(x) numDeriv::grad(momobjfunc_2d,x),
+  he = function(x) numDeriv::hessian(momobjfunc_2d,x)
+)
+momquad_2d <- aghq(momfunlist_2d,7,c(0,0))
+
+nummom_aghq_correct1_2d <- compute_moment(momquad_2d,nn=1,method = 'correct')
+nummom_aghq_correct2_2d <- compute_moment(momquad_2d,nn=2,method = 'correct')
+nummom_aghq_correct_central1_2d <- compute_moment(momquad_2d,nn=1,method = 'correct',type='central')
+nummom_aghq_correct_central2_2d <- compute_moment(momquad_2d,nn=2,method = 'correct',type='central')
+
+## TODO: add "correct" option into aghq and control ##
+set.seed(84343124)
+y_correct <- rpois(10,5) # Mode should be sum(y) / (10 + 1)
+objfunc_correct <- function(x) logfteta2d(x,y_correct)
+funlist_correct <- list(
+  fn = objfunc_correct,
+  gr = function(x) numDeriv::grad(objfunc_correct,x),
+  he = function(x) numDeriv::hessian(objfunc_correct,x)
+)
+thequadrature_reuse <- aghq(funlist_correct,3,c(0,0),control = default_control(method_summaries='reuse'))
+thequadrature_correct <- aghq(funlist_correct,3,c(0,0),control = default_control(method_summaries='correct'))
+thesummary_reuse <- summary(thequadrature_reuse)
+thesummary_correct <- summary(thequadrature_correct)
+truemean_correct <- digamma(c(sum(y_correct[1:5]) + 1,sum(y_correct[6:10]) + 1)) - log(c(5 + 1,5+1))
+truesd_correct <- sqrt(trigamma(c(sum(y_correct[1:5])+1,sum(y_correct[6:10]) + 1)))
 

@@ -8,6 +8,7 @@ marginal_laplace_tmb(
   ff,
   k,
   startingvalue,
+  transformation = default_transformation(),
   optresults = NULL,
   basegrid = NULL,
   control = default_control_tmb(),
@@ -30,6 +31,12 @@ approximation.}
 \item{startingvalue}{Value to start the optimization. \code{ff$fn(startingvalue)},
 \code{ff$gr(startingvalue)}, and \code{ff$he(startingvalue)} must all return
 appropriate values without error.}
+
+\item{transformation}{Optional. Do the quadrature for parameter \code{theta}, but
+return summaries and plots for parameter \code{g(theta)}. This applies to the \code{theta}
+parameters only, not the \code{W} parameters.
+\code{transformation} is either: a) an \code{aghqtrans} object returned by \code{aghq::make_transformation},
+or b) a list that will be passed to that function internally. See \code{?aghq::make_transformation} for details.}
 
 \item{optresults}{Optional. A list of the results of the optimization of the log
 posterior, formatted according to the output of \code{aghq::optimize_theta}. The
@@ -90,7 +97,13 @@ which you'll have to modify yourself) using \code{default_control_tmb(numhessian
 \seealso{
 Other quadrature: 
 \code{\link{aghq}()},
+\code{\link{get_hessian}()},
 \code{\link{get_log_normconst}()},
+\code{\link{get_mode}()},
+\code{\link{get_nodesandweights}()},
+\code{\link{get_numquadpoints}()},
+\code{\link{get_opt_results}()},
+\code{\link{get_param_dim}()},
 \code{\link{laplace_approximation}()},
 \code{\link{marginal_laplace}()},
 \code{\link{normalize_logpost}()},

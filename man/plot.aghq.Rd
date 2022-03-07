@@ -7,7 +7,8 @@
 \method{plot}{aghq}(x, ...)
 }
 \arguments{
-\item{x}{The return value of \code{aghq::aghq}.}
+\item{x}{The return value of \code{aghq::aghq}. Plots are created for the marginal
+pdf and cdf of \code{x$transformation$fromtheta(theta)}.}
 
 \item{...}{not used.}
 }
@@ -15,7 +16,7 @@
 Silently plots.
 }
 \description{
-Plot the marginal pdf and cdf from an \code{aghq} object.
+Plot the marginal pdf and cdf of the transformed parameter from an \code{aghq} object.
 }
 \examples{
 
@@ -52,7 +53,13 @@ plot(thequadrature)
 \seealso{
 Other quadrature: 
 \code{\link{aghq}()},
+\code{\link{get_hessian}()},
 \code{\link{get_log_normconst}()},
+\code{\link{get_mode}()},
+\code{\link{get_nodesandweights}()},
+\code{\link{get_numquadpoints}()},
+\code{\link{get_opt_results}()},
+\code{\link{get_param_dim}()},
 \code{\link{laplace_approximation}()},
 \code{\link{marginal_laplace_tmb}()},
 \code{\link{marginal_laplace}()},
@@ -69,7 +76,13 @@ Other quadrature:
 
 Other quadrature: 
 \code{\link{aghq}()},
+\code{\link{get_hessian}()},
 \code{\link{get_log_normconst}()},
+\code{\link{get_mode}()},
+\code{\link{get_nodesandweights}()},
+\code{\link{get_numquadpoints}()},
+\code{\link{get_opt_results}()},
+\code{\link{get_param_dim}()},
 \code{\link{laplace_approximation}()},
 \code{\link{marginal_laplace_tmb}()},
 \code{\link{marginal_laplace}()},

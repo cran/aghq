@@ -20,8 +20,7 @@ to this effect. Default \code{30}.}
 \item{...}{not used.}
 }
 \value{
-A list containing an object of class \code{aghqsummary} (see \code{summary.aghq})
-plus the following objects:
+A list containing an object of class \code{aghqsummary} (see \code{summary.aghq}).
 }
 \description{
 The \code{summary.marginallaplace} calls \code{summary.aghq}, but also computes
@@ -72,7 +71,13 @@ summary(themarginallaplace)
 \seealso{
 Other quadrature: 
 \code{\link{aghq}()},
+\code{\link{get_hessian}()},
 \code{\link{get_log_normconst}()},
+\code{\link{get_mode}()},
+\code{\link{get_nodesandweights}()},
+\code{\link{get_numquadpoints}()},
+\code{\link{get_opt_results}()},
+\code{\link{get_param_dim}()},
 \code{\link{laplace_approximation}()},
 \code{\link{marginal_laplace_tmb}()},
 \code{\link{marginal_laplace}()},
