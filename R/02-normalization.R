@@ -34,10 +34,6 @@
 #' \item{\code{lognormconst}: }{the actual result of the quadrature: the log of the normalizing constant of the posterior.}
 #' }
 #'
-#' If k = 1, then the method returns
-#' a numeric value representing the log of the normalizing constant computed using
-#' a Laplace approximation.
-#'
 #' @family quadrature
 #'
 #' @examples
@@ -80,10 +76,6 @@
 #'
 normalize_logpost <- function(optresults,k,whichfirst = 1,basegrid = NULL,ndConstruction = "product",...) {
   if (as.integer(k) != k) stop(paste0("Please provide an integer k, the number of quadrature points. You provided ",k,"which does not satisfy as.integer(k) == k"))
-  if (k == 1) {
-    # Laplace approx: just return the normalizing constant
-    return(optresults$ff$fn(optresults$mode,...) - as.numeric(.5 * determinant(optresults$hessian,logarithm = TRUE)$modulus) + .5*dim(optresults$hessian)[1]*log(2*pi))
-  }
   # Create the grid
   S <- length(optresults$mode) # Dimension
   if (!is.null(basegrid)) {
@@ -122,10 +114,12 @@ normalize_logpost <- function(optresults,k,whichfirst = 1,basegrid = NULL,ndCons
 
   # lognormconst <- logsumexp(log(ww) + pp)
   # Account for negative weights (doesn't happen with GHQ but happens for e.g. sparse rules)
-  lognormconst <- logdiffexp(
-    logsumexp(log(ww[ww>0]) + pp[ww>0]),
-    logsumexp(log(-ww[ww<0]) + pp[ww<0])
-  )
+  # lognormconst <- logdiffexp(
+  #   logsumexp(log(ww[ww>0]) + pp[ww>0]),
+  #   logsumexp(log(-ww[ww<0]) + pp[ww<0])
+  # )
+  lognormconst <- logsumexpweights(pp,ww)
+
 
   nodesandweights$logpost_normalized <- nodesandweights$logpost - lognormconst
 
@@ -135,6 +129,115 @@ normalize_logpost <- function(optresults,k,whichfirst = 1,basegrid = NULL,ndCons
     lognormconst = lognormconst
   )
 }
+
+#' Nested, sparse Gaussian quadrature in AGHQ
+#'
+#' Compute a whole sequence of log normalizing constants
+#' for \code{1,3,5,...,k} points,
+#' using only the function evaluations from the \code{k}-point nested rule.
+#'
+#' @param optresults The results of calling \code{aghq::optimize_theta()}: see return value of that function.
+#' The dimension of the parameter \code{p} will be taken from \code{optresults$mode}.
+#' @param p Dimension of the variable of integration.
+#' @param k Integer, the number of quadrature points to use.
+#' @param ndConstruction Create a multivariate grid using a product or sparse construction?
+#' Passed directly to \code{mvQuad::createNIGrid()}, see that function for further details.
+#' @param ... Additional arguments to be passed to \code{optresults$ff}, see \code{?optimize_theta}.
+#'
+#' @return For \code{get_quadtable}, a pre-computed table of nodes for the \code{k}-point rule,
+#' with weights for the points from each of the \code{1,3,...,k}-point rules, for passing to
+#' \code{nested_quadrature}. For \code{nested_quadrature} and \code{adaptive_nested_quadrature}, a named numeric vector of \code{optresults$fn}
+#' values for each \code{k}.
+#'
+#' @details \code{get_quadtable} currently uses \code{mvQuad} to compute the nodes and weights. This will be replaced
+#' by a manual reading of the pre-tabulated nodes and weights.
+#'
+#' \code{nested_quadrature} and \code{adaptive_nested_quadrature} take the **log** function values, just like \code{optimize_theta()},
+#' and return the **log** of the base/adapted quadrature rule.
+#'
+#' @family quadrature
+#'
+#' @examples
+#' # Same setup as optimize_theta
+#' logfteta <- function(eta,y) {
+#'   sum(y) * eta - (length(y) + 1) * exp(eta) - sum(lgamma(y+1)) + eta
+#' }
+#' set.seed(84343124)
+#' y <- rpois(10,5) # Mode should be sum(y) / (10 + 1)
+#' truemode <- log((sum(y) + 1)/(length(y) + 1))
+#
+#' objfunc <- function(x) logfteta(x,y)
+#' funlist <- list(
+#'   fn = objfunc,
+#'   gr = function(x) numDeriv::grad(objfunc,x),
+#'   he = function(x) numDeriv::hessian(objfunc,x)
+#' )
+#' opt_sparsetrust <- optimize_theta(funlist,1.5)
+#'
+#' @rdname nested
+#' @export
+#'
+nested_quadrature <- function(optresults,k,ndConstruction = 'product',...) {
+  # Compute the quadrature rule at 1,3,5,...,k points using only
+  # the function evaluations required to compute it at k points.
+  p <- length(optresults$mode)
+  quadtable <- get_quadtable(p,k,ndConstruction)
+  # TODO: speed and memory comparisons/optimization. Or just store the tables...
+  # quadtable <- as(as.matrix(quadtable),'sparseMatrix')
+  quadtable[is.na(quadtable)] <- 0
+  quadtable$lfval <- apply(quadtable[grep('V',colnames(quadtable))],1,optresults$fn)
+  # colSums(quadtable[grep('w',colnames(quadtable))]*exp(quadtable$lfval))
+
+  apply(quadtable[ ,grep('w',colnames(quadtable)),drop = FALSE],2,function(x) logsumexpweights(quadtable$lfval,x))
+}
+#' @rdname nested
+#' @export
+adaptive_nested_quadrature <- function(optresults,k,ndConstruction = 'product',...) {
+  # Compute the quadrature rule at 1,3,5,...,k points using only
+  # the function evaluations required to compute it at k points.
+  p <- length(optresults$mode)
+  quadtable <- get_quadtable(p,k,ndConstruction)
+  # TODO: speed and memory comparisons/optimization. Or just store the tables...
+  # quadtable <- as(as.matrix(quadtable),'sparseMatrix')
+  quadtable[is.na(quadtable)] <- 0
+  # TODO: adaptation
+  nodeidx <- grep('V',colnames(quadtable))
+  weightidx <- grep('w',colnames(quadtable))
+  # Scale
+  Lt <- chol(solve(optresults$hessian))
+  quadtable[ ,nodeidx] <- as.matrix(quadtable[ ,nodeidx]) %*% Lt
+  # Shift
+  quadtable[ ,nodeidx] <- sweep(quadtable[ ,nodeidx],2,optresults$mode,'+')
+  # function evals
+  quadtable$lfval <- apply(quadtable[nodeidx],1,function(x) optresults$fn(x))
+
+  detterm <- 0.5*as.numeric(determinant(optresults$hessian,logarithm = TRUE)$modulus)
+  apply(quadtable[ ,grep('w',colnames(quadtable)),drop = FALSE],2,function(x) logsumexpweights(quadtable$lfval,x)) - detterm
+}
+#' @rdname nested
+#' @export
+get_quadtable <- function(p,k,ndConstruction = 'product',...) {
+  if (k%%2==0) {
+    warning("Nested quadrature usually produces the same grid for adjacent even and odd k. You provided even k. Setting k = k+1.")
+    k <- k+1
+  }
+  # k is now odd
+  gg <- mvQuad::createNIGrid(p,'nHe',k,ndConstruction = ndConstruction)
+  nn <- as.data.frame(mvQuad::getNodes(gg))
+  nn$w <- mvQuad::getWeights(gg)[ ,1]
+  colnames(nn)[colnames(nn)=='w'] <- paste0('w',k)
+
+  # recursion
+  if (k > 1) {
+    nnl <- get_quadtable(p,k-2)
+    mergevars <- paste0('V',1:p)
+    nnm <- merge(nn,nnl,all=TRUE,by = mergevars)
+    return(nnm)
+  }
+  nn
+}
+
+
 
 #' Obtain the log-normalizing constant from a fitted quadrature object
 #'
@@ -163,7 +266,7 @@ get_log_normconst.numeric <- function(obj,...) obj
 get_log_normconst.aghq <- function(obj,...) get_log_normconst(obj$normalized_posterior)
 #' @rdname get_log_normconst
 #' @export
-get_log_normconst.laplace <- function(obj,...) obj$lognormconst
+get_log_normconst.laplace <- function(obj,...) obj$lognormconst$lognormconst
 #' @rdname get_log_normconst
 #' @export
 get_log_normconst.marginallaplace <- function(obj,...) get_log_normconst(obj$normalized_posterior)

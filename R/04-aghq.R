@@ -246,14 +246,15 @@ summary.aghq <- function(object,...) {
   thesummary <- cbind(themoments,thequants)
 
   # thesummary <- thesummary[ ,c('mean','median','mode','sd','2.5%','97.5%')]
-  thesummary <- thesummary[ ,c('mean','sd','2.5%','median','97.5%')]
+  # thesummary <- thesummary[ ,c('mean','sd','2.5%','median','97.5%')]
 
 
   out <- list()
   class(out) <- "aghqsummary"
   out$mode <- object$optresults$mode
   out$hessian <- object$optresults$hessian
-  out$lognormconst <- object$normalized_posterior$lognormconst
+  # out$lognormconst <- object$normalized_posterior$lognormconst
+  out$lognormconst <- get_log_normconst(object)
   out$covariance <- solve(out$hessian)
   # out$cholesky <- chol(out$covariance)
   out$quadpoints <- as.numeric(object$normalized_posterior$grid$level)
@@ -368,7 +369,9 @@ plot(...) to see plots of marginal distributions, and \n
 print.aghqsummary <- function(x,...) {
   cat("AGHQ on a",x$dim,"dimensional posterior with ",x$quadpoints,"quadrature points\n\n")
   cat("The posterior mode is:",x$mode,"\n\n")
-  cat("The log of the normalizing constant/marginal likelihood is:",x$lognormconst,"\n\n")
+  # cat("The log of the normalizing constant/marginal likelihood is:",x$lognormconst,"\n\n")
+  cat("The log of the normalizing constant/marginal likelihood is:",get_log_normconst(x),"\n\n")
+
   # cat("The posterior Hessian at the mode is:\n")
   # print(as.matrix(x$hessian))
   # cat("\n")
@@ -641,7 +644,8 @@ summary.laplace <- function(object,...) {
   out <- list()
   class(out) <- "laplacesummary"
   out$mode <- object$optresults$mode
-  out$lognormconst <- object$lognormconst
+  # out$lognormconst <- object$lognormconst
+  out$lognormconst <- get_log_normconst(object)
   out$dim <- d
 
   out
@@ -915,7 +919,7 @@ marginal_laplace <- function(ff,k,startingvalue,transformation = default_transfo
 
     add_elements(theta,lap$optresults$mode,lap$optresults$hessian,whichenv = whichenv)
 
-    as.numeric(lap$lognormconst)
+    as.numeric(get_log_normconst(lap))
   }
 
   ## Do the quadrature ##
@@ -979,9 +983,9 @@ marginal_laplace <- function(ff,k,startingvalue,transformation = default_transfo
     names(mtmp) <- paste0("W",1:length(mtmp))
     modesandhessians[i,'mode'] <- list(list(mtmp))
     modesandhessians[i,'H'] <- list(list(lap$optresults$hessian))
-    modesandhessians[i,'logpost'] <- as.numeric(lap$lognormconst)
+    modesandhessians[i,'logpost'] <- as.numeric(get_log_normconst(lap))
 
-    lp[i] <- as.numeric(lap$lognormconst)
+    lp[i] <- as.numeric(get_log_normconst(lap))
   }
 
   # Get the normalization constant
@@ -1210,19 +1214,19 @@ summary.marginallaplace <- function(object,M=1e03,max_print=30,...) {
   sds <- apply(samps$samps,1,stats::sd)
   quants <- t(apply(samps$samps,1,stats::quantile,probs = c(.025,.975)))
 
-  modes <- with(object,mapply(modesandhessians$mode,exp(normalized_posterior$nodesandweights$logpost_normalized)*normalized_posterior$nodesandweights$weights,FUN = '*'))
-  if (is.array(modes)) {
-    modes <- apply(modes,1,sum)
-  } else {
-    modes <- sum(modes)
-  }
+  # modes <- with(object,mapply(modesandhessians$mode,exp(normalized_posterior$nodesandweights$logpost_normalized)*normalized_posterior$nodesandweights$weights,FUN = '*'))
+  # if (is.array(modes)) {
+  #   modes <- apply(modes,1,sum)
+  # } else {
+  #   modes <- sum(modes)
+  # }
 
   randomeffectsummary <- data.frame(
     mean = means,
-    median = medians,
-    mode = modes,
+    # mode = modes,
     sd = sds,
     `2.5%` = quants[ ,1],
+    median = medians,
     `97.5%` = quants[ ,2]
   )
   colnames(randomeffectsummary) <- colnames(summ$summarytable)
